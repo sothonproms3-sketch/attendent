@@ -37,7 +37,12 @@ import {
   Info,
   Lock,
   User,
-  ArrowLeft
+  ArrowLeft,
+  Database,
+  RefreshCw,
+  Copy,
+  ExternalLink,
+  Link
 } from 'lucide-react';
 import { TeacherRecord, DocumentConfig } from './types';
 import SignaturePad from './components/SignaturePad';
@@ -55,6 +60,13 @@ import {
   exportToExcel, 
   getFullLunarString 
 } from './utils/documentExporters';
+import {
+  getSupabaseConfig,
+  getSupabaseClient,
+  supabaseFetchAllRows,
+  testSupabaseConnection,
+  syncTeachersToSupabase
+} from './lib/supabase';
 
 // Simple initial mock dataset to provide beautiful immediate demo content
 const INITIAL_TEACHERS: TeacherRecord[] = [
@@ -234,7 +246,7 @@ const DEFAULT_CONFIG: DocumentConfig = {
 export default function App() {
   const [teachers, setTeachers] = useState<TeacherRecord[]>(INITIAL_TEACHERS);
   const [config, setConfig] = useState<DocumentConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'config' | 'preview'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'config' | 'preview' | 'supabase'>('dashboard');
   const [activeShift, setActiveShift] = useState<'AM' | 'PM'>('AM'); // ព្រឹក=AM, រសៀល=PM
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('t-2'); // Selected teacher simulated account
   const [preferredSignatureMethod, setPreferredSignatureMethod] = useState<'draw' | 'camera' | 'upload'>('draw');
@@ -255,6 +267,51 @@ export default function App() {
   const [regPhone, setRegPhone] = useState('');
   const [regRemarks, setRegRemarks] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+
+  // Supabase dynamic setup states (Allows instantaneous preview/tests without local project rebuilds)
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => {
+    return (import.meta as any).env.VITE_SUPABASE_URL || localStorage.getItem('APP_SUPABASE_URL') || '';
+  });
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => {
+    return (import.meta as any).env.VITE_SUPABASE_ANON_KEY || localStorage.getItem('APP_SUPABASE_ANON_KEY') || '';
+  });
+  const [supabaseStatus, setSupabaseStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [supabaseMessage, setSupabaseMessage] = useState('');
+  const [supabaseCount, setSupabaseCount] = useState<number | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
+
+  // Mobile Simulator Customizable States
+  const [simCourseTitle, setSimCourseTitle] = useState(() => {
+    return localStorage.getItem('SIM_COURSE_TITLE') || 'ខេត្តបាត់ដំបង_GEIP-AF_ការគ្របគ្រងសាលារៀន ដើម្បីគាំទ្រការអនុវត្តស្តង់ដាសាលារៀនគំរូ';
+  });
+  const [simDateRange, setSimDateRange] = useState(() => {
+    return localStorage.getItem('SIM_DATE_RANGE') || '18 ឧសភា 2026 - 24 ឧសភា 2026';
+  });
+  const [simLocation, setSimLocation] = useState(() => {
+    return localStorage.getItem('SIM_LOCATION') || 'Phnom Penh';
+  });
+  const [simEnrollCurrent, setSimEnrollCurrent] = useState(() => {
+    return parseInt(localStorage.getItem('SIM_ENROLL_CURRENT') || '1355') || 1355;
+  });
+  const [simEnrollMax, setSimEnrollMax] = useState(() => {
+    return parseInt(localStorage.getItem('SIM_ENROLL_MAX') || '1700') || 1700;
+  });
+  const [simStatusOngoing, setSimStatusOngoing] = useState(() => {
+    const val = localStorage.getItem('SIM_STATUS_ONGOING');
+    return val !== null ? val === 'true' : true;
+  });
+  const [simStatusEnded, setSimStatusEnded] = useState(() => {
+    const val = localStorage.getItem('SIM_STATUS_ENDED');
+    return val !== null ? val === 'true' : false;
+  });
+  const [simStatusRegistered, setSimStatusRegistered] = useState(() => {
+    const val = localStorage.getItem('SIM_STATUS_REGISTERED');
+    return val !== null ? val === 'true' : true;
+  });
+
+  // State to toggle the helper edit panel in the Left Column of the Dashboard
+  const [showSimPanelInDashboard, setShowSimPanelInDashboard] = useState(false);
 
   
   // Modals / Overlays triggers
@@ -454,6 +511,106 @@ export default function App() {
     }
   };
 
+  // Save dynamic Supabase credentials to LocalStorage and test connection
+  const handleSaveAndTestSupabase = async (url: string, key: string) => {
+    setSupabaseStatus('loading');
+    setSupabaseMessage('កំពុងតភ្ជាប់ទៅកាន់ Supabase...');
+    
+    // Save to LocalStorage so they persist in user's browser preview
+    localStorage.setItem('APP_SUPABASE_URL', url.trim());
+    localStorage.setItem('APP_SUPABASE_ANON_KEY', key.trim());
+    
+    setTimeout(async () => {
+      const result = await testSupabaseConnection();
+      if (result.success) {
+        setSupabaseStatus('success');
+        setSupabaseMessage(result.message);
+      } else {
+        setSupabaseStatus('error');
+        setSupabaseMessage(result.message);
+      }
+    }, 800);
+  };
+
+  // Sync current teachers to Supabase Cloud
+  const handleSyncToSupabase = async () => {
+    setIsSyncing(true);
+    setSupabaseStatus('loading');
+    setSupabaseMessage('កំពុងរៀបចំបញ្ជូនទិន្នន័យទៅកាន់ Supabase...');
+    
+    try {
+      const result = await syncTeachersToSupabase(teachers);
+      if (result.success) {
+        setSupabaseStatus('success');
+        setSupabaseMessage(result.message);
+      } else {
+        setSupabaseStatus('error');
+        setSupabaseMessage(result.message);
+      }
+    } catch (err: any) {
+      setSupabaseStatus('error');
+      setSupabaseMessage(err.message || 'បានកើតកំហុសពេល Sync ទិន្នន័យ');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Pull teachers from Supabase with the >1000 row bypass pagination loop
+  const handleFetchAllFromSupabase = async () => {
+    setIsFetchingSupabase(true);
+    setSupabaseStatus('loading');
+    setSupabaseMessage('កំពុងទាញយកទិន្នន័យទាំងអស់ពី Supabase ( bypass លក្ខខណ្ឌ ១០០០ ជួរ)...');
+    setSupabaseCount(null);
+
+    try {
+      const { data, error } = await supabaseFetchAllRows<any>('teachers', 'no');
+      if (error) {
+        setSupabaseStatus('error');
+        setSupabaseMessage(`បរាជ័យក្នុងការទាញយកទិន្នន័យ៖ ${error.message}`);
+      } else {
+        setSupabaseStatus('success');
+        setSupabaseCount(data.length);
+        setSupabaseMessage(`ទាញយកបានជោគជ័យ! សរុបចំនួន៖ ${data.length} ជួរ។ ដំណើរការដោយគ្មានបញ្ហាដែនកំណត់ ១០០០ ជួរបរិមាណឡើយ។`);
+        
+        // If data is returned, we can optionally populate our local school status list for the demo!
+        if (data && data.length > 0) {
+          const mappedTeachers: TeacherRecord[] = data.map((d: any) => ({
+            id: d.id,
+            no: d.no || 0,
+            name: d.name || '',
+            gender: d.gender || 'ប្រុស',
+            remarks: d.remarks || '',
+            statusAM: d.statusAM || 'អវត្តមាន',
+            timeInAM: d.timeInAM || '',
+            signatureInAM: d.signatureInAM || null,
+            locationInAM: d.locationInAM || null,
+            timeOutAM: d.timeOutAM || '',
+            signatureOutAM: d.signatureOutAM || null,
+            locationOutAM: d.locationOutAM || null,
+            statusPM: d.statusPM || 'អវត្តមាន',
+            timeInPM: d.timeInPM || '',
+            signatureInPM: d.signatureInPM || null,
+            locationInPM: d.locationInPM || null,
+            timeOutPM: d.timeOutPM || '',
+            signatureOutPM: d.signatureOutPM || null,
+            locationOutPM: d.locationOutPM || null,
+            status: d.statusAM || 'អវត្តមាន',
+            timeIn: d.timeInAM || '',
+            signatureIn: d.signatureInAM || null,
+            timeOut: d.timeOutAM || '',
+            signatureOut: d.signatureOutAM || null,
+          }));
+          setTeachers(mappedTeachers);
+        }
+      }
+    } catch (err: any) {
+      setSupabaseStatus('error');
+      setSupabaseMessage(err.message || 'បានកើតកំហុសក្នុងការ Fetch ទិន្នន័យ');
+    } finally {
+      setIsFetchingSupabase(false);
+    }
+  };
+
   const handleSaveSignature = async (dataUrl: string) => {
     if (activeSignatureTarget) {
       const { teacherId, type } = activeSignatureTarget;
@@ -597,6 +754,14 @@ export default function App() {
                 <Eye className="w-4 h-4 text-[#c5a059]" />
                 <span>📄 ទិដ្ឋភាពមុនបោះពុម្ព (A4 Print)</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('supabase')}
+                className={`flex items-center gap-2 font-sans font-medium text-xs px-4 py-2 rounded-lg transition shrink-0 ${activeTab === 'supabase' ? 'bg-indigo-700 text-white font-semibold shadow ring-1 ring-indigo-500' : 'text-[#818cf8] font-semibold bg-indigo-950/20 hover:bg-indigo-900/30 hover:text-white cursor-pointer'}`}
+              >
+                <Database className="w-4.5 h-4.5 text-emerald-400" />
+                <span>⚡ ស្ពានភ្ជាប់ Supabase (Vercel)</span>
+              </button>
             </div>
           </div>
         </div>
@@ -640,6 +805,147 @@ export default function App() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* 🍊 Mobile Screen Info Editor (Custom Request) */}
+                <div className="bg-[#fffcf8] border-2 border-[#ea580c]/30 rounded-2xl p-4 flex flex-col gap-3 shadow-sm select-none">
+                  <button
+                    type="button"
+                    onClick={() => setShowSimPanelInDashboard(!showSimPanelInDashboard)}
+                    className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">🍊</span>
+                      <span className="text-xs font-sans font-bold text-[#ea580c] block">
+                        រៀបចំបញ្ជីវគ្គសិក្សាទូរស័ព្ទ (Edit Mobile Course Info)
+                      </span>
+                    </div>
+                    <span className="text-stone-400 font-bold text-[9px] transition-transform duration-200">
+                      {showSimPanelInDashboard ? '▲' : '▼'}
+                    </span>
+                  </button>
+
+                  {showSimPanelInDashboard && (
+                    <div className="flex flex-col gap-3.5 border-t border-[#ea580c]/10 pt-3 font-sans animate-fade-in text-[11px]">
+                      
+                      {/* Course Title */}
+                      <div className="flex flex-col gap-1">
+                        <label className="font-bold text-stone-700">ឈ្មោះវគ្គសិក្សា ឬគម្រោង (Course Title):</label>
+                        <textarea
+                          rows={2}
+                          value={simCourseTitle}
+                          onChange={(e) => {
+                            setSimCourseTitle(e.target.value);
+                            localStorage.setItem('SIM_COURSE_TITLE', e.target.value);
+                          }}
+                          placeholder="ឧ. ខេត្តកំពង់ចាម_GEIP-AIP_ការរួមបញ្ចូលសាលារៀនដើម្បីគាំទ្រការអនុវត្តស្តង់ដាសាលារៀនគំរូ"
+                          className="w-full px-3 py-2 rounded-xl text-[11px] font-sans bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs leading-relaxed"
+                        />
+                      </div>
+
+                      {/* Date Range */}
+                      <div className="flex flex-col gap-1">
+                        <label className="font-bold text-stone-700">កាលបរិច្ឆេទ (Date Range):</label>
+                        <input
+                          type="text"
+                          value={simDateRange}
+                          onChange={(e) => {
+                            setSimDateRange(e.target.value);
+                            localStorage.setItem('SIM_DATE_RANGE', e.target.value);
+                          }}
+                          className="w-full px-3 py-1.5 rounded-lg text-[11px] font-sans bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-semibold"
+                        />
+                      </div>
+
+                      {/* Location */}
+                      <div className="flex flex-col gap-1">
+                        <label className="font-bold text-stone-700">ទីតាំង (Location):</label>
+                        <input
+                          type="text"
+                          value={simLocation}
+                          onChange={(e) => {
+                            setSimLocation(e.target.value);
+                            localStorage.setItem('SIM_LOCATION', e.target.value);
+                          }}
+                          className="w-full px-3 py-1.5 rounded-lg text-[11px] font-sans bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-semibold"
+                        />
+                      </div>
+
+                      {/* Counter Current & Max */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="font-bold text-stone-700">ចំនួនចុះឈ្មោះ (Current):</label>
+                          <input
+                            type="number"
+                            value={simEnrollCurrent}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              setSimEnrollCurrent(val);
+                              localStorage.setItem('SIM_ENROLL_CURRENT', val.toString());
+                            }}
+                            className="w-full px-3 py-1.5 rounded-lg text-[11px] font-mono bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-bold"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-bold text-stone-700">កម្រិតខ្ពស់បំផុត (Max Cap):</label>
+                          <input
+                            type="number"
+                            value={simEnrollMax}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              setSimEnrollMax(val);
+                              localStorage.setItem('SIM_ENROLL_MAX', val.toString());
+                            }}
+                            className="w-full px-3 py-1.5 rounded-lg text-[11px] font-mono bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Toggle statuses badges */}
+                      <div className="flex flex-col gap-1.5 border-t border-[#ea580c]/10 pt-2.5">
+                        <span className="font-bold text-stone-750 block mb-0.5">ស្ថានភាពឡាប៊ែល (Status Badges):</span>
+                        
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !simStatusOngoing;
+                              setSimStatusOngoing(next);
+                              localStorage.setItem('SIM_STATUS_ONGOING', next.toString());
+                            }}
+                            className={`py-1 px-1.5 rounded-md border text-[9px] font-bold text-center cursor-pointer transition ${simStatusOngoing ? 'bg-orange-100 border-orange-300 text-orange-850' : 'bg-stone-50 border-stone-200 text-stone-400'}`}
+                          >
+                            ONGOING
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !simStatusEnded;
+                              setSimStatusEnded(next);
+                              localStorage.setItem('SIM_STATUS_ENDED', next.toString());
+                            }}
+                            className={`py-1 px-1.5 rounded-md border text-[9px] font-bold text-center cursor-pointer transition ${simStatusEnded ? 'bg-rose-100 border-rose-300 text-rose-800' : 'bg-stone-50 border-stone-200 text-stone-400'}`}
+                          >
+                            បានបញ្ចប់
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !simStatusRegistered;
+                              setSimStatusRegistered(next);
+                              localStorage.setItem('SIM_STATUS_REGISTERED', next.toString());
+                            }}
+                            className={`py-1 px-1.5 rounded-md border text-[9px] font-bold text-center cursor-pointer transition ${simStatusRegistered ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-stone-50 border-stone-200 text-stone-400'}`}
+                          >
+                            ចុះឈ្មោះហើយ
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
                 </div>
 
                 {/* ឧបករណ៍ស្កេនហត្ថលេខាឌីជីថលបែបកាមេរ៉ារហ័ស (Interactive Holographic Scanner Terminal) */}
@@ -863,7 +1169,7 @@ export default function App() {
                       {/* Center Title / URL Info */}
                       <div className="flex-grow text-center px-1.5 min-w-0">
                         <h4 className="font-sans font-extrabold text-[11px] text-stone-900 truncate leading-tight">
-                          ខេត្តបាត់ដំបង_GEIP-AF_ការគ្រ...
+                          {simCourseTitle.length > 25 ? simCourseTitle.substring(0, 25) + '...' : simCourseTitle}
                         </h4>
                         <span className="text-[8.5px] font-sans font-bold text-emerald-600 leading-none mt-0.5 block flex items-center justify-center gap-1">
                           <span className="w-1 h-1 bg-emerald-500 rounded-full animate-ping inline-block"></span>
@@ -876,7 +1182,7 @@ export default function App() {
                         <button 
                           type="button"
                           onClick={() => {
-                            alert("តំណភ្ជាប់ត្រូវបានចម្លង៖ https://plp-tms.moeys.gov.kh/courses/battambang-geip-af");
+                            alert(`តំណភ្ជាប់ត្រូវបានចម្លង៖ https://plp-tms.moeys.gov.kh/courses/${simCourseTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}`);
                           }}
                           className="p-1 hover:bg-stone-100 rounded-lg transition shrink-0 cursor-pointer"
                         >
@@ -924,31 +1230,37 @@ export default function App() {
                             {/* Badges row matching original user image precisely */}
                             <div className="flex flex-wrap items-center gap-1.5">
                               {/* 1. ONGOING badge */}
-                              <span className="text-[7.5px] tracking-wider font-mono font-bold text-stone-500 bg-stone-100 border border-stone-250 px-2 py-0.5 rounded-md uppercase">
-                                ONGOING
-                              </span>
+                              {simStatusOngoing && (
+                                <span className="text-[7.5px] tracking-wider font-mono font-bold text-stone-500 bg-stone-100 border border-stone-250 px-2 py-0.5 rounded-md uppercase">
+                                  ONGOING
+                                </span>
+                              )}
                               
                               {/* 2. Completed cross boundary */}
-                              <span className="text-[8px] font-bold text-rose-500 bg-rose-50/50 border border-rose-100 px-2 py-0.5 rounded-md">
-                                បានបញ្ចប់
-                              </span>
+                              {simStatusEnded && (
+                                <span className="text-[8px] font-bold text-rose-500 bg-rose-50/50 border border-rose-100 px-2 py-0.5 rounded-md">
+                                  បានបញ្ចប់
+                                </span>
+                              )}
 
                               {/* 3. Registered successfully (Pulse if logged in) */}
-                              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 transition-all ${
-                                loginSuccessShow || isRegistered
-                                  ? 'bg-blue-100 text-blue-700 border border-blue-300 shadow-2xs animate-pulse font-extrabold'
-                                  : 'bg-blue-50 text-blue-600/80 border border-blue-200/50'
-                              }`}>
-                                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                                <span>បានចុះឈ្មោះរួចហើយ</span>
-                              </span>
+                              {simStatusRegistered && (
+                                <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 transition-all ${
+                                  loginSuccessShow || isRegistered
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-300 shadow-2xs animate-pulse font-extrabold'
+                                    : 'bg-blue-50 text-blue-600/80 border border-blue-200/50'
+                                }`}>
+                                  <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                  <span>បានចុះឈ្មោះរួចហើយ</span>
+                                </span>
+                              )}
                             </div>
 
                             {/* Main Subject Title */}
                             <h4 className="font-moul text-[11.5px] text-slate-900 leading-relaxed font-bold tracking-tight mt-1">
-                              ខេត្តបាត់ដំបង_GEIP-AF_ការគ្របគ្រងសាលារៀន ដើម្បីគាំទ្រការអនុវត្តស្តង់ដាសាលារៀនគំរូ
+                              {simCourseTitle}
                             </h4>
 
                             <div className="border-t border-stone-100/85 my-0.5"></div>
@@ -960,7 +1272,7 @@ export default function App() {
                                 <span className="text-stone-400 mt-0.5 text-xs">📅</span>
                                 <div>
                                   <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">កាលបរិច្ឆេទ៖</span>
-                                  <span className="font-semibold text-stone-800">18 ឧសភា 2026 - 24 ឧសភា 2026</span>
+                                  <span className="font-semibold text-stone-800">{simDateRange}</span>
                                 </div>
                               </div>
 
@@ -969,7 +1281,7 @@ export default function App() {
                                 <span className="text-stone-400 mt-0.5 text-xs">📍</span>
                                 <div>
                                   <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">ទីតាំង៖</span>
-                                  <span className="font-semibold text-stone-850">Phnom Penh</span>
+                                  <span className="font-semibold text-stone-850">{simLocation}</span>
                                 </div>
                               </div>
 
@@ -979,7 +1291,7 @@ export default function App() {
                                 <div>
                                   <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">អ្នកចូលរួម៖</span>
                                   <span className="font-mono font-bold text-stone-850 text-[10.5px]">
-                                    {loginSuccessShow ? '1356' : '1355'} <span className="text-stone-400 text-[9.5px] font-sans">/ 1700 នាក់</span>
+                                    {loginSuccessShow ? (simEnrollCurrent + 1) : simEnrollCurrent} <span className="text-stone-400 text-[9.5px] font-sans">/ {simEnrollMax} នាក់</span>
                                   </span>
                                 </div>
                               </div>
@@ -1467,110 +1779,222 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Collapsible Form for adding a new teacher */}
-              {isAddingNew && (
-                <form 
-                  onSubmit={handleAddTeacherSubmit}
-                  className="p-5 border-b border-stone-200 bg-[#faf8f3] grid grid-cols-1 md:grid-cols-3 gap-4"
-                >
-                  <div className="flex flex-col gap-1.5 col-span-1 md:col-span-2">
-                    <label className="text-xs font-sans font-medium text-stone-650">ឈ្មោះលោកគ្រូ/អ្នកគ្រូ <span className="text-red-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      value={newTeacherForm.name}
-                      onChange={(e) => setNewTeacherForm({ ...newTeacherForm, name: e.target.value })}
-                      placeholder="ឧ. ស៊ន សុជាតា"
-                      className="w-full px-4 py-2 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-sans font-medium text-stone-600">ភេទ <span className="text-red-500">*</span></label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setNewTeacherForm({ ...newTeacherForm, gender: 'ប្រុស' })}
-                        className={`py-2 rounded-xl text-xs font-sans font-semibold border transition ${newTeacherForm.gender === 'ប្រុស' ? 'bg-[#b45309] border-[#b45309] text-white' : 'bg-white border-stone-200 text-stone-600'}`}
-                      >
-                        ប្រុស (Male)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNewTeacherForm({ ...newTeacherForm, gender: 'ស្រី' })}
-                        className={`py-2 rounded-xl text-xs font-sans font-semibold border transition ${newTeacherForm.gender === 'ស្រី' ? 'bg-[#8c2d19] border-[#8c2d19] text-white' : 'bg-white border-stone-200 text-stone-600'}`}
-                      >
-                        ស្រី (Female)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-sans font-medium text-stone-600">ស្ថានភាពវត្តមាន <span className="text-red-500">*</span></label>
-                    <select
-                      value={newTeacherForm.status}
-                      onChange={(e: any) => setNewTeacherForm({ ...newTeacherForm, status: e.target.value })}
-                      className="w-full px-4 py-2 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
-                    >
-                      <option value="វត្តមាន">វត្តមាន (Present)</option>
-                      <option value="ច្បាប់">ច្បាប់ (Leave/Permission)</option>
-                      <option value="យឺត">យឺត (Late)</option>
-                      <option value="អវត្តមាន">អវត្តមាន (Absent)</option>
-                    </select>
-                  </div>
-
-                  {newTeacherForm.status !== 'អវត្តមាន' && newTeacherForm.status !== 'ច្បាប់' && (
-                    <>
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-sans font-medium text-stone-600">ម៉ោងចូល</label>
-                        <input
-                          type="text"
-                          value={newTeacherForm.timeIn}
-                          onChange={(e) => setNewTeacherForm({ ...newTeacherForm, timeIn: e.target.value })}
-                          placeholder="e.g., 07:00 AM"
-                          className="w-full px-4 py-2 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-sans font-medium text-stone-600">ម៉ោងចេញ</label>
-                        <input
-                          type="text"
-                          value={newTeacherForm.timeOut}
-                          onChange={(e) => setNewTeacherForm({ ...newTeacherForm, timeOut: e.target.value })}
-                          placeholder="e.g., 11:30 AM"
-                          className="w-full px-4 py-2 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="flex flex-col gap-1.5 col-span-1 md:col-span-3">
-                    <label className="text-xs font-sans font-medium text-stone-600">កត់សម្គាល់ផ្សេងៗ (ផ្សេងៗ)</label>
-                    <input
-                      type="text"
-                      value={newTeacherForm.remarks}
-                      onChange={(e) => setNewTeacherForm({ ...newTeacherForm, remarks: e.target.value })}
-                      placeholder="ឧ. បង្រៀនថ្នាក់ជំនួស, ជាប់ប្រជុំ..."
-                      className="w-full px-4 py-2 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
-                    />
-                  </div>
-
-                  <div className="col-span-1 md:col-span-3 flex justify-end gap-2 mt-2">
+              {/* Collapsible Form for adding or editing a teacher */}
+              {(isAddingNew || editingTeacherId !== null) && (
+                <div className="p-5 border-b border-stone-200 bg-[#faf8f3] flex flex-col gap-5 transition-all duration-300">
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-3">
+                    <h3 className="font-moul text-[#b45309] text-[11px] flex items-center gap-2">
+                      {editingTeacherId !== null ? (
+                        <>
+                          <Edit3 className="w-4 h-4 text-[#b45309]" />
+                          <span>កែសម្រួលព័ត៌មាន និងឈ្មោះលោកគ្រូ/អ្នកគ្រូ (Edit Teacher Profile)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 text-[#b45309]" />
+                          <span>បំពេញការបញ្ចូលឈ្មោះលោកគ្រូ/អ្នកគ្រូថ្មី (Add Teacher Profile)</span>
+                        </>
+                      )}
+                    </h3>
                     <button
                       type="button"
-                      onClick={() => setIsAddingNew(false)}
-                      className="px-4 py-2 rounded-xl text-xs font-sans font-medium bg-stone-150 hover:bg-stone-200 text-stone-600 border border-transparent transition"
+                      onClick={() => {
+                        setIsAddingNew(false);
+                        setEditingTeacherId(null);
+                      }}
+                      className="text-stone-400 hover:text-stone-600 transition p-1 hover:bg-stone-200/50 rounded-lg cursor-pointer"
                     >
-                      បោះបង់
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-xl text-xs font-sans font-semibold text-white bg-[#b45309] hover:bg-[#9a3412] transition"
-                    >
-                      រក្សាសមាជិកថ្មី
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
-                </form>
+
+                  {editingTeacherId !== null ? (
+                    // EDIT PROFILES FORM
+                    (() => {
+                      const teacherToEdit = teachers.find(t => t.id === editingTeacherId);
+                      if (!teacherToEdit) return (
+                        <p className="text-xs font-sans text-stone-500 italic">មិនអាចរកឃើញព័ត៌មានគ្រូសម្រាប់ការកែសម្រួលឡើយ។</p>
+                      );
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div className="flex flex-col gap-1.5 md:col-span-2">
+                            <label className="text-xs font-sans font-bold text-stone-700">ឈ្មោះលោកគ្រូ/អ្នកគ្រូ <span className="text-red-500">*</span></label>
+                            <input
+                              type="text"
+                              required
+                              value={teacherToEdit.name}
+                              onChange={(e) => handleUpdateField(editingTeacherId, 'name', e.target.value)}
+                              placeholder="ឧ. ស៊ន សុជាតា"
+                              className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-250 text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-[#b45309] focus:border-[#b45309] shadow-sm transition"
+                            />
+                            <p className="text-[10px] text-stone-400 font-sans italic">អក្សរខ្មែរត្រូវមានចន្លោះមិនឱ្យជាប់គ្នា (ឧ. ស៊ន សុជាតា)</p>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-sans font-bold text-stone-700">ភេទ <span className="text-red-500">*</span></label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateField(editingTeacherId, 'gender', 'ប្រុស')}
+                                className={`py-2 rounded-xl text-xs font-sans font-semibold border transition cursor-pointer ${teacherToEdit.gender === 'ប្រុស' ? 'bg-[#b45309] border-[#b45309] text-white shadow-sm' : 'bg-white border-stone-200 text-stone-600'}`}
+                              >
+                                ប្រុស (Male)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateField(editingTeacherId, 'gender', 'ស្រី')}
+                                className={`py-2 rounded-xl text-xs font-sans font-semibold border transition cursor-pointer ${teacherToEdit.gender === 'ស្រី' ? 'bg-[#8c2d19] border-[#8c2d19] text-white shadow-sm' : 'bg-white border-stone-200 text-stone-600'}`}
+                              >
+                                ស្រី (Female)
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-sans font-bold text-stone-700">ល.រ លំដាប់ក្នុងបញ្ជី <span className="text-red-500">*</span></label>
+                            <input
+                              type="number"
+                              required
+                              value={teacherToEdit.no}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || teacherToEdit.no;
+                                handleUpdateField(editingTeacherId, 'no', val);
+                              }}
+                              className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-250 text-stone-855 focus:outline-none focus:ring-2 focus:ring-[#b45309] focus:border-[#b45309] shadow-sm transition"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-1.5 col-span-1 md:col-span-4">
+                            <label className="text-xs font-sans font-bold text-stone-700">កត់សម្គាល់ ឬតួនាទីផ្សេងៗ (Remarks)</label>
+                            <input
+                              type="text"
+                              value={teacherToEdit.remarks || ''}
+                              onChange={(e) => handleUpdateField(editingTeacherId, 'remarks', e.target.value)}
+                              placeholder="ឧ. គ្រូឧទ្ទេស, បង្រៀនថ្នាក់ជំនួស, គណៈកម្មការ..."
+                              className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-250 text-stone-850 focus:outline-none focus:ring-2 focus:ring-[#b45309] focus:border-[#b45309] shadow-sm transition"
+                            />
+                          </div>
+
+                          <div className="col-span-1 md:col-span-4 flex justify-end gap-2 border-t pt-3 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditingTeacherId(null)}
+                              className="px-5 py-2.5 rounded-xl text-xs font-sans font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              <span>រក្សាទុក និងបញ្ចប់ការកែសម្រួល</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    // ADD NEW PROFILES FORM
+                    <form 
+                      onSubmit={handleAddTeacherSubmit}
+                      className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                    >
+                      <div className="flex flex-col gap-1.5 col-span-1 md:col-span-2">
+                        <label className="text-xs font-sans font-bold text-stone-700">ឈ្មោះលោកគ្រូ/អ្នកគ្រូ <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          required
+                          value={newTeacherForm.name}
+                          onChange={(e) => setNewTeacherForm({ ...newTeacherForm, name: e.target.value })}
+                          placeholder="ឧ. ស៊ន សុជាតា"
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#b45309] shadow-sm transition font-semibold"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-sans font-bold text-stone-700">ភេទ <span className="text-red-500">*</span></label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setNewTeacherForm({ ...newTeacherForm, gender: 'ប្រុស' })}
+                            className={`py-2 rounded-xl text-xs font-sans font-semibold border transition cursor-pointer ${newTeacherForm.gender === 'ប្រុស' ? 'bg-[#b45309] border-[#b45309] text-white shadow-sm' : 'bg-white border-stone-200 text-stone-600'}`}
+                          >
+                            ប្រុស (Male)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewTeacherForm({ ...newTeacherForm, gender: 'ស្រី' })}
+                            className={`py-2 rounded-xl text-xs font-sans font-semibold border transition cursor-pointer ${newTeacherForm.gender === 'ស្រី' ? 'bg-[#8c2d19] border-[#8c2d19] text-white shadow-sm' : 'bg-white border-stone-200 text-stone-600'}`}
+                          >
+                            ស្រី (Female)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-sans font-bold text-stone-700">ស្ថានភាពវត្តមាន <span className="text-red-500">*</span></label>
+                        <select
+                          value={newTeacherForm.status}
+                          onChange={(e: any) => setNewTeacherForm({ ...newTeacherForm, status: e.target.value })}
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309] shadow-sm cursor-pointer"
+                        >
+                          <option value="វត្តមាន">វត្តមាន (Present)</option>
+                          <option value="ច្បាប់">ច្បាប់ (Leave/Permission)</option>
+                          <option value="យឺត">យឺត (Late)</option>
+                          <option value="អវត្តមាន">អវត្តមាន (Absent)</option>
+                        </select>
+                      </div>
+
+                      {newTeacherForm.status !== 'អវត្តមាន' && newTeacherForm.status !== 'ច្បាប់' && (
+                        <>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-sans font-bold text-stone-700">ម៉ោងចូល</label>
+                            <input
+                              type="text"
+                              value={newTeacherForm.timeIn}
+                              onChange={(e) => setNewTeacherForm({ ...newTeacherForm, timeIn: e.target.value })}
+                              placeholder="e.g., 07:00 AM"
+                              className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-sans font-bold text-stone-700">ម៉ោងចេញ</label>
+                            <input
+                              type="text"
+                              value={newTeacherForm.timeOut}
+                              onChange={(e) => setNewTeacherForm({ ...newTeacherForm, timeOut: e.target.value })}
+                              placeholder="e.g., 11:30 AM"
+                              className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309]"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      <div className="flex flex-col gap-1.5 col-span-1 md:col-span-3">
+                        <label className="text-xs font-sans font-bold text-stone-700">កត់សម្គាល់ផ្សេងៗ (ផ្សេងៗ)</label>
+                        <input
+                          type="text"
+                          value={newTeacherForm.remarks}
+                          onChange={(e) => setNewTeacherForm({ ...newTeacherForm, remarks: e.target.value })}
+                          placeholder="ឧ. បង្រៀនថ្នាក់ជំនួស, ជាប់ប្រជុំ..."
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-sans bg-white border border-stone-200 text-stone-700 focus:outline-none focus:ring-2 focus:ring-[#b45309] shadow-sm"
+                        />
+                      </div>
+
+                      <div className="col-span-1 md:col-span-3 flex justify-end gap-2 mt-2 border-t pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingNew(false)}
+                          className="px-4 py-2 rounded-xl text-xs font-sans font-medium bg-stone-150 hover:bg-stone-200 text-stone-600 border border-transparent transition cursor-pointer"
+                        >
+                          បោះបង់
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 rounded-xl text-xs font-sans font-bold text-white bg-[#b45309] hover:bg-[#9a3412] shadow-md transition cursor-pointer flex items-center gap-1.5"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span>រក្សាទុកជាសមាជិកថ្មី</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               )}
 
               {/* Main Interactive Table Grid */}
@@ -2149,6 +2573,132 @@ export default function App() {
               </div>
             </div>
 
+            {/* Simulated Mobile Screen Settings */}
+            <div className="border-t border-stone-200 pt-6">
+              <span className="text-xs font-semibold text-[#ea580c] font-sans tracking-wide block uppercase mb-4">
+                ៤. ការកំណត់អេក្រង់ចុះឈ្មោះលើទូរស័ព្ទដៃ (Mobile Simulator Settings — Orange Circled Items)
+              </span>
+
+              <div className="bg-[#fffdf9] border-2 border-[#ea580c]/20 p-5 rounded-2xl flex flex-col gap-5">
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-1.5 col-span-1 md:col-span-2">
+                    <label className="text-xs font-sans font-bold text-stone-700">ឈ្មោះវគ្គសិក្សាក្នុងទូរស័ព្ទ (Course Title)</label>
+                    <textarea
+                      rows={2}
+                      value={simCourseTitle}
+                      onChange={(e) => {
+                        setSimCourseTitle(e.target.value);
+                        localStorage.setItem('SIM_COURSE_TITLE', e.target.value);
+                      }}
+                      className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-sans text-stone-850 font-medium focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
+                      placeholder="បញ្ចូលឈ្មោះបន្ទាត់ ឬលេខកូដគម្រោង..."
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-sans font-bold text-stone-700">កាលបរិច្ឆេទបង្ហាញ (Date Range)</label>
+                    <input
+                      type="text"
+                      value={simDateRange}
+                      onChange={(e) => {
+                        setSimDateRange(e.target.value);
+                        localStorage.setItem('SIM_DATE_RANGE', e.target.value);
+                      }}
+                      className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-sans text-stone-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-sans font-bold text-stone-700">ទីតាំង (Location)</label>
+                    <input
+                      type="text"
+                      value={simLocation}
+                      onChange={(e) => {
+                        setSimLocation(e.target.value);
+                        localStorage.setItem('SIM_LOCATION', e.target.value);
+                      }}
+                      className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-sans text-stone-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-sans font-bold text-stone-700">ចំនួនចុះឈ្មោះបច្ចុប្បន្ន (Current Enrolled)</label>
+                    <input
+                      type="number"
+                      value={simEnrollCurrent}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setSimEnrollCurrent(val);
+                        localStorage.setItem('SIM_ENROLL_CURRENT', val.toString());
+                      }}
+                      className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-mono text-stone-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-sans font-bold text-stone-700">ចំនួនកំណត់អតិបរមា (Max Limit)</label>
+                    <input
+                      type="number"
+                      value={simEnrollMax}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setSimEnrollMax(val);
+                        localStorage.setItem('SIM_ENROLL_MAX', val.toString());
+                      }}
+                      className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-mono text-stone-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
+                    />
+                  </div>
+                </div>
+
+                {/* Badges toggler */}
+                <div className="flex flex-col gap-2 bg-[#fcfcfc] p-4 rounded-xl border border-stone-200/80">
+                  <span className="text-xs font-sans font-bold text-stone-700 block">ស្ថានភាពឡាប៊ែល (Status Badges Visibilities):</span>
+                  <div className="flex flex-wrap gap-4 mt-1">
+                    <label className="flex items-center gap-2 text-xs font-sans text-stone-650 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={simStatusOngoing}
+                        onChange={(e) => {
+                          setSimStatusOngoing(e.target.checked);
+                          localStorage.setItem('SIM_STATUS_ONGOING', e.target.checked.toString());
+                        }}
+                        className="w-4 h-4 text-[#ea580c] rounded border-stone-300 focus:ring-[#ea580c]"
+                      />
+                      <span>បង្ហាញឡាប៊ែល ONGOING</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs font-sans text-stone-650 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={simStatusEnded}
+                        onChange={(e) => {
+                          setSimStatusEnded(e.target.checked);
+                          localStorage.setItem('SIM_STATUS_ENDED', e.target.checked.toString());
+                        }}
+                        className="w-4 h-4 text-[#ea580c] rounded border-stone-300 focus:ring-[#ea580c]"
+                      />
+                      <span>បង្ហាញឡាប៊ែល បានបញ្ចប់</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs font-sans text-stone-650 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={simStatusRegistered}
+                        onChange={(e) => {
+                          setSimStatusRegistered(e.target.checked);
+                          localStorage.setItem('SIM_STATUS_REGISTERED', e.target.checked.toString());
+                        }}
+                        className="w-4 h-4 text-[#ea580c] rounded border-stone-300 focus:ring-[#ea580c]"
+                      />
+                      <span>បង្ហាញឡាប៊ែល ចុះឈ្មោះរួចហើយ</span>
+                    </label>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
             <div className="flex justify-end gap-3 mt-4">
               <button
                 type="button"
@@ -2445,6 +2995,297 @@ export default function App() {
                 <Printer className="w-4 h-4" />
                 <span>បោះពុម្ពទំព័រនេះ (Print ឬទាញយក PDF)</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'supabase' && (
+          <div className="bg-indigo-50/20 border border-indigo-200/50 rounded-3xl p-6 flex flex-col gap-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-indigo-100 pb-5">
+              <div>
+                <h2 className="font-moul text-stone-850 text-base flex items-center gap-2">
+                  <Database className="w-5 h-5 text-indigo-650" />
+                  ស្ពានភ្ជាប់ប្រព័ន្ធទិន្នន័យ Supabase Cloud & Vercel
+                </h2>
+                <p className="font-sans text-xs text-stone-500 mt-1">
+                  គ្រប់គ្រងការរក្សាទុកទិន្នន័យលើសហការជាមួយសេវាកម្ម Cloud ដោយមិនមានដែនកំណត់ទំហំផ្ទុក ១,០០០ ជួរ។
+                </p>
+              </div>
+              <div className="flex items-center gap-2 bg-indigo-50/80 px-3.5 py-1.5 rounded-xl border border-indigo-150">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+                <span className="text-[10px] font-sans font-bold text-indigo-700">ស្ថានភាព៖ {supabaseStatus === 'success' ? 'ភ្ជាប់ជោគជ័យ' : supabaseStatus === 'loading' ? 'កំពុងតភ្ជាប់...' : supabaseStatus === 'error' ? 'មានបញ្ហា' : 'រង់ចាំការតភ្ជាប់'}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Config Panel */}
+              <div className="lg:col-span-5 flex flex-col gap-6">
+                <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-4">
+                  <h3 className="font-moul text-stone-880 text-[10px] border-b pb-2 mb-1 flex items-center justify-between">
+                    <span>⚙️ បញ្ចូលគ្រាប់ចុច (Connection Keys)</span>
+                    <span className="text-[8.5px] font-sans bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">Local Cache</span>
+                  </h3>
+
+                  <div className="flex flex-col gap-3 font-sans text-xs">
+                    <div className="flex flex-col gap-1">
+                      <label className="font-bold text-stone-700 flex items-center gap-1">
+                        <span>SUPABASE_URL</span>
+                        <span className="text-[9.5px] font-normal text-stone-400 font-mono">(VITE_SUPABASE_URL)</span>
+                      </label>
+                      <input 
+                        type="url" 
+                        value={supabaseUrlInput}
+                        onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                        placeholder="https://your-project.supabase.co"
+                        className="w-full px-3 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px] text-stone-700"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-bold text-stone-700 flex items-center gap-1">
+                        <span>SUPABASE_ANON_KEY</span>
+                        <span className="text-[9.5px] font-normal text-stone-400 font-mono">(VITE_SUPABASE_ANON_KEY)</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={supabaseKeyInput}
+                        onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        className="w-full px-3 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[10px] text-stone-750 resize-none leading-relaxed"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5 mt-2">
+                    <button
+                      onClick={() => handleSaveAndTestSupabase(supabaseUrlInput, supabaseKeyInput)}
+                      className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${supabaseStatus === 'loading' ? 'animate-spin' : ''}`} />
+                      <span>រក្សាទុក និងសាកល្បងភ្ជាប់</span>
+                    </button>
+                    {(supabaseUrlInput || supabaseKeyInput) && (
+                      <button
+                        onClick={() => {
+                          setSupabaseUrlInput('');
+                          setSupabaseKeyInput('');
+                          localStorage.removeItem('APP_SUPABASE_URL');
+                          localStorage.removeItem('APP_SUPABASE_ANON_KEY');
+                          setSupabaseStatus('idle');
+                          setSupabaseMessage('បានសម្អាតទិន្នន័យតភ្ជាប់ជោគជ័យ។');
+                          setSupabaseCount(null);
+                        }}
+                        className="px-3 py-2.5 text-stone-500 hover:text-red-500 bg-stone-100 hover:bg-stone-150 rounded-xl transition text-xs cursor-pointer"
+                        title="វិលត្រឡប់ទៅទទេ"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {supabaseMessage && (
+                    <div className={`p-3 rounded-xl border text-[11px] font-sans mt-1 leading-relaxed ${
+                      supabaseStatus === 'success' ? 'bg-emerald-50 border-emerald-150 text-emerald-800' :
+                      supabaseStatus === 'error' ? 'bg-rose-50 border-rose-150 text-rose-850' :
+                      'bg-indigo-50/50 border-indigo-100 text-indigo-850'
+                    }`}>
+                      <div className="font-semibold flex items-center gap-1.5 mb-1">
+                        {supabaseStatus === 'success' ? '✅ ជោគជ័យ៖' : supabaseStatus === 'error' ? '❌ កំហុស៖' : 'ℹ️ កំពុងដំណើរការ៖'}
+                      </div>
+                      {supabaseMessage}
+                    </div>
+                  )}
+                </div>
+
+                {/* Database Sync Actions */}
+                <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-4">
+                  <h3 className="font-moul text-indigo-900 text-[10px] border-b pb-2 mb-1">
+                    📊 ជម្រើសសមាសធាតុទិន្នន័យ (Actions)
+                  </h3>
+                  
+                  <div className="flex flex-col gap-3 text-xs font-sans">
+                    {/* Sync Current State Up */}
+                    <div>
+                      <p className="text-stone-500 text-[11px] mb-2 leading-relaxed">
+                        ១. បញ្ជូនបញ្ជីគ្រូបច្ចុប្បន្ន ({teachers.length} នាក់) ទៅកាន់តារាង <code className="bg-stone-100 px-1 py-0.5 rounded font-mono font-bold text-stone-700">teachers</code> នៅលើ Supabase។
+                      </p>
+                      <button
+                        onClick={handleSyncToSupabase}
+                        disabled={isSyncing}
+                        className={`w-full px-4 py-2.5 font-bold rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-2 ${
+                          isSyncing ? 'bg-stone-100 text-stone-400' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow'
+                        }`}
+                      >
+                        {isSyncing ? 'កំពុងបញ្ជូន...' : '📤 ធ្វើសមកាលកម្ម (Sync Local &rarr; Supabase)'}
+                      </button>
+                    </div>
+
+                    {/* Pull All State Down (with condition for >1000 rows limit bypass) */}
+                    <div className="border-t pt-4">
+                      <p className="text-stone-500 text-[11px] mb-2 leading-relaxed">
+                        ២. ទាញយកទិន្នន័យ (Fetch) ទាំងអស់មកវិញ។ ប្រព័ន្ធប្រើប្រាស់ <strong>កូដស្ពានដោះស្រាយដែនកំណត់ ១,០០០ ជួរ</strong> រ៉ាប៊ីតឌីណាមិក ដើម្បីដំណើរការសួរនាំដោយរលូន ទោះបីជាប្រភេទ Free គម្រោងក៏ដោយ។
+                      </p>
+                      <button
+                        onClick={handleFetchAllFromSupabase}
+                        disabled={isFetchingSupabase}
+                        className={`w-full px-4 py-2.5 font-bold rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-2 ${
+                          isFetchingSupabase ? 'bg-[#b45309]/50 text-[#fef3c7]' : 'bg-indigo-650 hover:bg-indigo-750 text-white shadow'
+                        }`}
+                      >
+                        {isFetchingSupabase ? 'កំពុងទាញយក...' : '📥 សួរនាំទិន្នន័យ (>១០០០ ជួរ Bypass)'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Vercel & Supabase Pagination limit Explanation */}
+              <div className="lg:col-span-7 flex flex-col gap-6">
+                
+                {/* 1. Limit Bypass Explanation */}
+                <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm">
+                  <h3 className="font-moul text-[#b45309] text-[10px] border-b pb-2 mb-3">
+                    💡 យុទ្ធសាស្ត្រទាញទិន្នន័យលើសពី ១,០០០ ជួរ (Supabase Limitation Bypass)
+                  </h3>
+                  <div className="font-sans text-xs text-stone-600 leading-relaxed flex flex-col gap-3">
+                    <p>
+                      គម្រោង <strong>Supabase Free Plan</strong> មានការកំណត់មួយគឺមិនអនុញ្ញាតឱ្យសួរទិន្នន័យ (Query) ច្រើនជាង <strong className="text-stone-850 bg-stone-100 px-1 rounded font-mono">1000 rows</strong> នៅលើសំណើតែមួយ (API response limit)។ ដើម្បីជំនះបញ្ហានេះ យើងបានបង្កើតក្បួនដោះស្រាយពិសេស <strong>"Range-Pagination Loop"</strong> នៅក្នុង <code className="bg-indigo-50 text-indigo-750 px-1 rounded font-mono">supabaseFetchAllRows</code>:
+                    </p>
+                    <div className="bg-[#1c1917] text-amber-250 p-4 rounded-xl font-mono text-[10px] overflow-x-auto select-all leading-normal relative text-amber-200">
+                      <div className="absolute top-2 right-2 bg-stone-800 text-stone-400 px-1.5 py-0.5 rounded text-[8px]">TypeScript</div>
+{`async function supabaseFetchAllRows<T>(tableName, batchSize = 1000) {
+  let allRows = [];
+  let from = 0; let to = batchSize - 1; let completed = false;
+
+  while (!completed) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .range(from, to) // ❤️ គន្លឹះ៖ កំណត់បរិវេណទិន្នន័យចន្លោះ
+      .order('id', { ascending: true });
+
+    if (error) return { error };
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      if (data.length < batchSize) {
+        completed = true; // បានទាញអស់ហើយ
+      } else {
+        from += batchSize; // រំកិលបន្ថែម ១០០០ ជួរបន្ទាប់
+        to += batchSize;
+      }
+    } else { completed = true; }
+  }
+  return { data: allRows };
+}`}
+                    </div>
+                    <p className="text-[#0f766e] bg-[#f0fdfa] p-3 rounded-lg border border-[#ccfbf1] text-[11px] font-sans font-medium">
+                      🚀 <strong>លទ្ធផល៖</strong> ប្រព័ន្ធអាចទាញទិន្នន័យរហូតដល់ ១០០០០ ជួរ ឬច្រើនជាងនេះដោយគ្មានថ្ងៃទាក់ស្ទះ ឬប៉ះពាល់ការប្រើប្រាស់គម្រោងឥតគិតថ្លៃឡើយ!
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Vercel Environment Configuration UI */}
+                <div className="bg-white p-5 rounded-2xl border border-indigo-150 relative overflow-hidden shadow-sm">
+                  <div className="absolute top-0 right-0 bg-indigo-650 text-white font-sans text-[9px] font-bold px-3 py-1 rounded-bl-xl">
+                    GUIDE FOR VERCEL
+                  </div>
+                  <h3 className="font-moul text-indigo-950 text-[10.5px] border-b pb-2 mb-3">
+                    🖥️ របៀបយក URL របស់ Supabase ទៅដាក់ក្នុង Vercel
+                  </h3>
+                  <div className="font-sans text-xs text-stone-600 leading-relaxed flex flex-col gap-3">
+                    <p>
+                      នៅពេលអ្នកដាក់ពង្រាយ (Deploy) កម្មវិធីនេះនៅលើ <strong>Vercel Console</strong> សូមអនុវត្តតាមជំហានងាយៗខាងក្រោមដើម្បីឱ្យកម្មវិធីទាញយកទិន្នន័យពី Supabase ដោយស្វ័យប្រវត្ត៖
+                    </p>
+                    
+                    <ol className="list-decimal pl-5 flex flex-col gap-2 text-stone-700">
+                      <li>
+                        ចូលទៅកាន់គណនី <strong>Vercel Dashboard</strong> រួចជ្រើសរើសយក Project របស់អ្នក។
+                      </li>
+                      <li>
+                        ចុចលើកាតាលីកឃើ <strong>Settings</strong> &rarr; រួចជ្រើសរើសយក <strong>Environment Variables</strong>។
+                      </li>
+                      <li>
+                        បញ្ចូលគន្លឹះងាយៗចំនួនពីរ (២) ដូចខាងក្រោម៖
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2 font-mono text-[10px]">
+                          <div className="p-2.5 bg-stone-50 border rounded-lg">
+                            <span className="font-bold text-indigo-700 block text-[9.5px]">Key ទី១</span>
+                            <span className="text-stone-800 text-[10.5px]">VITE_SUPABASE_URL</span>
+                            <span className="text-stone-400 block text-[8px] mt-1 italic">តម្លៃចម្លងពី Supabase Project Settings API URL</span>
+                          </div>
+                          <div className="p-2.5 bg-stone-50 border rounded-lg">
+                            <span className="font-bold text-indigo-700 block text-[9.5px]">Key ទី២</span>
+                            <span className="text-stone-800 text-[10.5px]">VITE_SUPABASE_ANON_KEY</span>
+                            <span className="text-stone-400 block text-[8px] mt-1 italic">តម្លៃចម្លងពី Anon Public API Key</span>
+                          </div>
+                        </div>
+                      </li>
+                      <li>
+                        ចុចប៊ូតុង <strong>Add</strong> រួចធ្វើការ <strong>Redeploy</strong> ជាការស្រេច!
+                      </li>
+                    </ol>
+
+                    <div className="bg-indigo-50 text-indigo-950 text-[11px] p-3 rounded-lg border border-indigo-100 flex items-start gap-2 mt-1">
+                      <span className="text-base text-indigo-600">ℹ️</span>
+                      <p>
+                        <strong>ចំណាំ៖</strong> ដោយសារតែគំរូរបស់ Vite ត្រូវបានដំណើរការនៅលើ Client-side environment គ្រប់អថេរទាំងអស់ដែលចង់បង្ហាញនៅលើកូដ browser ត្រូវតែទាមទារបុព្វបទ <strong className="font-mono bg-indigo-100 px-1 text-black rounded">VITE_</strong> ជានិច្ច។
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. SQL Commands Copy Assist */}
+                <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-3">
+                  <h3 className="font-moul text-stone-850 text-[10px] border-b pb-2 font-bold">
+                    🛠️ SQL សម្រាប់បង្កើតតារាងក្នុង Supabase SQL Editor
+                  </h3>
+                  <p className="font-sans text-xs text-stone-500">
+                    សូមចម្លងកូដ SQL ខាងក្រោម ហើយយកទៅដំណើរការ (Run) នៅក្នុង Supabase SQL Editor ដើម្បីបង្កើតគ្រោងទិន្នន័យ (Tables)៖
+                  </p>
+                  
+                  <div className="bg-stone-900 rounded-xl p-3 text-stone-300 font-mono text-[9px] max-h-48 overflow-y-auto leading-relaxed relative">
+                    <pre className="select-all">
+{`-- ១. បង្កើតតារាងគ្រូ (teachers)
+CREATE TABLE IF NOT EXISTS teachers (
+    id VARCHAR(50) PRIMARY KEY,
+    no INT NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    gender VARCHAR(10) CHECK (gender IN ('ប្រុស', 'ស្រី')),
+    remarks VARCHAR(255) DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ២. បង្កើតតារាងវត្តមាន (attendance_logs)
+CREATE TABLE IF NOT EXISTS attendance_logs (
+    id SERIAL PRIMARY KEY,
+    teacher_id VARCHAR(50) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    attendance_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    status_am VARCHAR(20) DEFAULT 'អវត្តមាន' CHECK (status_am IN ('វត្តមាន', 'អវត្តមាន', 'ច្បាប់', 'យឺត')),
+    time_in_am TIME NULL,
+    signature_in_am TEXT NULL,
+    location_in_am VARCHAR(150) NULL,
+    time_out_am TIME NULL,
+    signature_out_am TEXT NULL,
+    location_out_am VARCHAR(150) NULL,
+    status_pm VARCHAR(20) DEFAULT 'អវត្តមាន' CHECK (status_pm IN ('វត្តមាន', 'អវត្តមាន', 'ច្បាប់', 'យឺត')),
+    time_in_pm TIME NULL,
+    signature_in_pm TEXT NULL,
+    location_in_pm VARCHAR(150) NULL,
+    time_out_pm TIME NULL,
+    signature_out_pm TEXT NULL,
+    location_out_pm VARCHAR(150) NULL,
+    CONSTRAINT unique_teacher_date UNIQUE (teacher_id, attendance_date)
+);
+
+-- ៣. បន្ថែមទិន្នន័យគំរូសាកល្បង
+INSERT INTO teachers (id, no, name, gender, remarks) VALUES
+('t-1', 1, 'ព្រំ សុធន', 'ប្រុស', 'គ្រូបច្ចេកទេស'),
+('t-2', 2, 'លឹម សុផល', 'ស្រី', 'គ្រូបង្រៀនគណិតវិទ្យា')
+ON CONFLICT (id) DO NOTHING;`}
+                    </pre>
+                  </div>
+                </div>
+
+              </div>
             </div>
           </div>
         )}
