@@ -27,7 +27,17 @@ import {
   Folder,
   CheckSquare,
   Award,
-  ChevronDown
+  ChevronDown,
+  Camera,
+  Share2,
+  MoreVertical,
+  X,
+  LogIn,
+  UserPlus,
+  Info,
+  Lock,
+  User,
+  ArrowLeft
 } from 'lucide-react';
 import { TeacherRecord, DocumentConfig } from './types';
 import SignaturePad from './components/SignaturePad';
@@ -227,6 +237,25 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'config' | 'preview'>('dashboard');
   const [activeShift, setActiveShift] = useState<'AM' | 'PM'>('AM'); // ព្រឹក=AM, រសៀល=PM
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('t-2'); // Selected teacher simulated account
+  const [preferredSignatureMethod, setPreferredSignatureMethod] = useState<'draw' | 'camera' | 'upload'>('draw');
+  const [activeScanSlot, setActiveScanSlot] = useState<'in_am' | 'out_am' | 'in_pm' | 'out_pm'>('in_am');
+  
+  // Interactive MoEYS registration/login portal states
+  const [mobileScreen, setMobileScreen] = useState<'home' | 'registration' | 'login'>('home');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginSuccessShow, setLoginSuccessShow] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(true); // default true to show exact " ✓ បានចុះឈ្មោះរួចហើយ " badge in screenshot
+  
+  // Registration Form States
+  const [regName, setRegName] = useState('');
+  const [regGender, setRegGender] = useState<'ប្រុស' | 'ស្រី'>('ស្រី');
+  const [regId, setRegId] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regRemarks, setRegRemarks] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+
   
   // Modals / Overlays triggers
   const [activeSignatureTarget, setActiveSignatureTarget] = useState<{
@@ -613,6 +642,132 @@ export default function App() {
                   </select>
                 </div>
 
+                {/* ឧបករណ៍ស្កេនហត្ថលេខាឌីជីថលបែបកាមេរ៉ារហ័ស (Interactive Holographic Scanner Terminal) */}
+                <div className="bg-[#1e293b] text-slate-100 p-4 rounded-2xl border border-slate-700 flex flex-col gap-3 shadow-md no-print">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-emerald-500/10 p-1.5 rounded-xl text-emerald-400">
+                      <Camera className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-moul text-[10px] text-emerald-400 leading-tight">
+                        កន្លែងស្កេនហត្ថលេខាដៃ (Paper Scanner)
+                      </h4>
+                      <p className="text-[9px] text-slate-400 font-sans">បំលែងហត្ថលេខាក្រដាស ទៅជាហត្ថលេខាឌីជីថលស្អាត</p>
+                    </div>
+                  </div>
+
+                  {/* 1. Selector for simulation target slot */}
+                  <div className="flex flex-col gap-1 text-[11px]">
+                    <span className="text-slate-300 font-sans font-medium">១. ជ្រើសរើសវេនដែលត្រូវចុះវត្តមាន៖</span>
+                    <div className="grid grid-cols-2 gap-1.5 mt-1 font-sans">
+                      {[
+                        { id: 'in_am', label: '🌅 ចូលព្រឹក' },
+                        { id: 'out_am', label: '🚪 ចេញព្រឹក' },
+                        { id: 'in_pm', label: '🌇 ចូលរសៀល' },
+                        { id: 'out_pm', label: '🚪 ចេញរសៀល' }
+                      ].map((slot) => (
+                        <button
+                          key={slot.id}
+                          type="button"
+                          onClick={() => setActiveScanSlot(slot.id as any)}
+                          className={`py-1.5 px-2 rounded-lg border text-left transition text-[10px] flex items-center justify-between cursor-pointer ${
+                            activeScanSlot === slot.id
+                              ? 'bg-emerald-600 border-emerald-400 text-white font-bold shadow-xs'
+                              : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-850'
+                          }`}
+                        >
+                          <span>{slot.label}</span>
+                          {activeScanSlot === slot.id && <span className="w-1.5 h-1.5 bg-white rounded-full block animate-ping"></span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 2. Visual Holographic Interactive Scanner View */}
+                  <div className="relative w-full h-24 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex flex-col justify-center items-center">
+                    {/* Corner viewfinder brackets */}
+                    <div className="absolute top-2 left-2 w-2.5 h-2.5 border-t-2 border-l-2 border-emerald-400"></div>
+                    <div className="absolute top-2 right-2 w-2.5 h-2.5 border-t-2 border-r-2 border-emerald-400"></div>
+                    <div className="absolute bottom-2 left-2 w-2.5 h-2.5 border-b-2 border-l-2 border-emerald-400"></div>
+                    <div className="absolute bottom-2 right-2 w-2.5 h-2.5 border-b-2 border-r-2 border-emerald-400"></div>
+
+                    {/* Laser Scanner animation bar moving up and down continuously */}
+                    <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_8px_rgba(16,185,129,0.8)]" style={{
+                      transform: 'translateY(-20px)',
+                      animation: 'scanLineEffect 2.5s infinite ease-in-out'
+                    }}></div>
+
+                    {/* Custom CSS for scanner animation directly injected */}
+                    <style dangerouslySetInnerHTML={{__html: `
+                      @keyframes scanLineEffect {
+                        0%, 100% { transform: translateY(-35px); opacity: 0.8; }
+                        50% { transform: translateY(35px); opacity: 0.9; }
+                      }
+                    `}} />
+
+                    {/* Simulator inner text display */}
+                    <div className="flex flex-col items-center justify-center text-center z-10 p-2 leading-tight select-none pointer-events-none">
+                      <span className="text-lg animate-pulse">📠</span>
+                      <span className="text-[8px] font-mono font-bold text-emerald-400 uppercase tracking-widest mt-1 block">
+                        CAMERA FRAME ACTIVE
+                      </span>
+                      <span className="text-[9px] font-moul text-slate-350 mt-0.5 block">
+                        ចុចប៊ូតុងខាងក្រោមដើម្បីស្កេនក្រដាស
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. Action buttons */}
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreferredSignatureMethod('camera');
+                        if (activeScanSlot === 'in_am') {
+                          setActiveShift('AM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'in' });
+                        } else if (activeScanSlot === 'out_am') {
+                          setActiveShift('AM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'out' });
+                        } else if (activeScanSlot === 'in_pm') {
+                          setActiveShift('PM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'in' });
+                        } else if (activeScanSlot === 'out_pm') {
+                          setActiveShift('PM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'out' });
+                        }
+                      }}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-sans text-xs font-bold rounded-xl shadow cursor-pointer transition flex items-center justify-center gap-2 border border-emerald-550"
+                    >
+                      <Camera className="w-4 h-4 shrink-0" />
+                      <span>បើកស្កេនកាមេរ៉ា (Camera Scan)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreferredSignatureMethod('upload');
+                        if (activeScanSlot === 'in_am') {
+                          setActiveShift('AM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'in' });
+                        } else if (activeScanSlot === 'out_am') {
+                          setActiveShift('AM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'out' });
+                        } else if (activeScanSlot === 'in_pm') {
+                          setActiveShift('PM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'in' });
+                        } else if (activeScanSlot === 'out_pm') {
+                          setActiveShift('PM');
+                          setActiveSignatureTarget({ teacherId: selectedTeacherId, type: 'out' });
+                        }
+                      }}
+                      className="w-full py-1.5 bg-slate-800 hover:bg-slate-755 text-slate-300 font-sans text-[10px] rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 border border-slate-700"
+                    >
+                      <span>📂 ផ្ទុករូបភាពស្កេន (Upload Slip Photo)</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Description helper card */}
                 <div className="border border-amber-100 rounded-2xl p-4 bg-amber-50/50 flex flex-col gap-2.5 text-xs text-stone-700 leading-relaxed font-sans">
                   <span className="font-bold text-[#b45309] flex items-center gap-1.5">
@@ -632,16 +787,16 @@ export default function App() {
                 {/* Shortcuts directly to other screens */}
                 <div className="flex flex-col gap-1 text-[11px] border-t pt-4 text-stone-400">
                   <span className="font-sans font-semibold">ទិន្នន័យរួមទូទាំងសាលា៖</span>
-                  <div className="grid grid-cols-2 gap-2 mt-1.5">
+                  <div className="grid grid-cols-2 gap-2 mt-1.5 font-sans">
                     <button 
                       onClick={() => setActiveTab('editor')}
-                      className="text-left font-sans hover:text-[#b45309] hover:underline"
+                      className="text-left hover:text-[#b45309] hover:underline cursor-pointer"
                     >
                       &bull; បញ្ជីវត្តមានដិតលម្អិត &rarr;
                     </button>
                     <button 
                       onClick={() => setActiveTab('preview')}
-                      className="text-left font-sans hover:text-[#b45309] hover:underline"
+                      className="text-left hover:text-[#b45309] hover:underline cursor-pointer"
                     >
                       &bull; ទំព័រមុនបោះពុម្ព A4 &rarr;
                     </button>
@@ -682,383 +837,501 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Simulator App Content Area (Responsive container layout) */}
-                    <div className="p-4 flex-grow flex flex-col gap-4 overflow-y-auto max-h-[640px] scrollbar-none [content-visibility:auto]">
+                    {/* MoEYS Browser Custom Header Bar */}
+                    <div className="bg-white px-4 py-2.5 flex items-center justify-between border-b border-stone-200 select-none z-20">
+                      {/* Left Side: X and ChevronDown browser close simulation */}
+                      <div className="flex items-center gap-2.5 text-stone-700">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setMobileScreen('home');
+                            setLoginSuccessShow(false);
+                          }}
+                          className="p-1 hover:bg-stone-100 rounded-lg transition shrink-0 cursor-pointer"
+                          title="Close Browser"
+                        >
+                          <X className="w-5 h-5 text-stone-850" />
+                        </button>
+                        <button 
+                          type="button"
+                          className="p-1 hover:bg-stone-100 rounded-lg transition shrink-0"
+                        >
+                          <ChevronDown className="w-5 h-5 text-stone-600" />
+                        </button>
+                      </div>
                       
-                      {/* Subtitle / Header Page name matching screenshot: ទំព័រដើម */}
-                      <div className="text-center pb-1">
-                        <span className="font-moul text-[10px] text-stone-550 border-b border-dashed border-stone-200 pb-1 px-4">
-                          ទំព័រដើម
+                      {/* Center Title / URL Info */}
+                      <div className="flex-grow text-center px-1.5 min-w-0">
+                        <h4 className="font-sans font-extrabold text-[11px] text-stone-900 truncate leading-tight">
+                          ខេត្តបាត់ដំបង_GEIP-AF_ការគ្រ...
+                        </h4>
+                        <span className="text-[8.5px] font-sans font-bold text-emerald-600 leading-none mt-0.5 block flex items-center justify-center gap-1">
+                          <span className="w-1 h-1 bg-emerald-500 rounded-full animate-ping inline-block"></span>
+                          plp-tms.moeys.gov.kh
                         </span>
                       </div>
 
-                      {/* Header Section: Welcome User */}
-                      <div className="flex items-center gap-3 bg-white p-3.5 rounded-2xl border border-stone-100 shadow-sm mt-1">
-                        <div className="w-11 h-11 rounded-full bg-[#cbd5e1] border-2 border-white shadow-sm flex items-center justify-center text-stone-500">
-                          <span className="text-sm font-sans font-bold">
-                            {currentTeacher.gender === 'ស្រី' ? '👩‍🏫' : '👨‍🏫'}
-                          </span>
-                        </div>
-                        <div className="flex-grow">
-                          <span className="text-[9.5px] font-sans text-stone-400 block tracking-tight leading-none mb-1">លោកគ្រូ/អ្នកគ្រូ</span>
-                          <h4 className="font-moul text-[12px] text-slate-800 leading-none">
-                            {currentTeacher.name}
-                          </h4>
-                        </div>
-                      </div>
-
-                      {/* Blue banner matching physical screenshot exactly */}
-                      <div className="bg-gradient-to-r from-sky-600 to-sky-500 text-white p-4 rounded-2xl relative shadow-md overflow-hidden animate-fade-in group">
-                        {/* Decorative watermark */}
-                        <div className="absolute top-[-10px] right-[-10px] w-24 h-24 bg-sky-400 opacity-20 rounded-full"></div>
-                        
-                        <div className="flex gap-3 relative z-10">
-                          <div className="bg-white/10 w-8 h-8 rounded-xl flex items-center justify-center shrink-0">
-                            <span className="text-lg">📢</span>
-                          </div>
-                          <div className="flex-grow flex flex-col gap-1.5">
-                            <h5 className="font-sans font-extrabold text-[12px] leading-snug">
-                              ភ្ជាប់ជាមួយ Telegram Bot ផ្លូវការ
-                            </h5>
-                            <p className="text-[10px] text-sky-50 leading-relaxed font-sans font-medium">
-                              ដើម្បីទទួលបាននូវសេចក្តីជូនដំណឹងវត្តមាន ការកាត់កងម៉ោង ថែមម៉ោង និងវិញ្ញាបនបត្រទាន់ហេតុការណ៍...
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between mt-3 bg-white/10 p-2 rounded-xl border border-white/10 relative z-10">
-                          <span className="text-[9.5px] font-sans font-bold text-sky-100">
-                            Bot: @MoEYSAttendanceBot
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => alert(" Bot Telegram ត្រូវបានតភ្ជាប់ដោយជោគជ័យ!")}
-                            className="bg-white text-sky-700 hover:bg-sky-50 transition text-[9px] font-sans font-bold py-1 px-2 rounded-lg cursor-pointer flex items-center gap-1 shrink-0"
-                          >
-                            <span>🚀 ភ្ជាប់ bot</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="text-center font-sans font-bold text-[9.5px] text-[#2563eb] hover:text-[#1d4ed8] cursor-pointer flex items-center justify-center gap-1">
-                        <span>មើលមុខងារទាំងអស់ដែលគ្រូនឹងទទួលបាន</span>
-                        <ChevronDown className="w-3 h-3 text-[#2563eb]" />
-                      </div>
-
-                      {/* Counters widgets matching screenshot (1, 1, 0 counters) */}
-                      <div className="grid grid-cols-3 gap-2.5 my-1">
-                        {/* Session counter */}
-                        <div className="bg-sky-50/50 p-3 rounded-2xl border border-sky-100 text-center flex flex-col items-center shadow-2xs">
-                          <div className="w-8 h-8 rounded-xl bg-sky-100 flex items-center justify-center text-sky-600 mb-1">
-                            <Folder className="w-4 h-4" />
-                          </div>
-                          <span className="font-sans font-bold text-lg text-sky-750">{convertToKhmerDigits(1)}</span>
-                          <span className="text-[9px] text-sky-550 font-sans leading-none mt-0.5">វគ្គសរុប</span>
-                        </div>
-
-                        {/* Processing counter */}
-                        <div className="bg-emerald-50/50 p-3 rounded-2xl border border-emerald-100 text-center flex flex-col items-center shadow-2xs">
-                          <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 mb-1">
-                            <CheckSquare className="w-4 h-4" />
-                          </div>
-                          <span className="font-sans font-bold text-lg text-emerald-750">{convertToKhmerDigits(1)}</span>
-                          <span className="text-[9px] text-emerald-550 font-sans leading-none mt-0.5">កំពុងដំណើរការ</span>
-                        </div>
-
-                        {/* Certificates counter */}
-                        <div className="bg-[#fffbeb] p-3 rounded-2xl border border-amber-100 text-center flex flex-col items-center shadow-2xs">
-                          <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 mb-1">
-                            <Award className="w-4 h-4" />
-                          </div>
-                          <span className="font-sans font-bold text-lg text-amber-750">{convertToKhmerDigits(0)}</span>
-                          <span className="text-[9px] text-amber-550 font-sans leading-none mt-0.5">វិញ្ញាបនបត្រ</span>
-                        </div>
-                      </div>
-
-                      {/* Todays schedule heading */}
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <h4 className="font-moul text-[11px] text-stone-800">វគ្គមានថ្ងៃនេះ</h4>
-                          <span className="text-[9px] text-stone-400 font-sans cursor-pointer">🕒 ស្រស់ៗ</span>
-                        </div>
-                        <p className="text-[10px] text-[#4f46e5] font-sans font-bold italic leading-snug border-l-2 border-[#4f46e5] pl-2 bg-indigo-50/35 py-1.5 rounded-r-xl">
-                          ខេត្តបាត់ដំបង_GEIP-AF_ការគ្រប់គ្រងសាលារៀន ដើម្បីគាំទ្រការអនុវត្តន៍ស្តង់ដារសាលារៀនគំរូ
-                        </p>
-                      </div>
-
-                      {/* 4 CHECK-IN BUTTON CARDS Row - Exact screenshot replica */}
-                      <div className="grid grid-cols-4 gap-1.5 my-1">
-                        
-                        {/* 1. AM Check-In */}
-                        <div 
+                      {/* Right Side: Share and More buttons */}
+                      <div className="flex items-center gap-1 text-stone-700">
+                        <button 
+                          type="button"
                           onClick={() => {
-                            setActiveShift('AM');
-                            setActiveSignatureTarget({ teacherId: currentTeacher.id, type: 'in' });
+                            alert("តំណភ្ជាប់ត្រូវបានចម្លង៖ https://plp-tms.moeys.gov.kh/courses/battambang-geip-af");
                           }}
-                          className={`rounded-[18px] p-2 border text-center flex flex-col items-center justify-between cursor-pointer transition min-h-[110px] ${
-                            currentTeacher.signatureInAM 
-                              ? 'bg-emerald-50/50 border-emerald-400 text-emerald-800 shadow-sm' 
-                              : 'bg-white hover:bg-stone-50 border-emerald-200/80 text-[#10b981] shadow-2xs'
-                          }`}
+                          className="p-1 hover:bg-stone-100 rounded-lg transition shrink-0 cursor-pointer"
                         >
-                          {/* Circle login icon in green */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 shrink-0 ${currentTeacher.signatureInAM ? 'bg-emerald-100 text-emerald-700' : 'bg-green-50 text-green-600'}`}>
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                              <polyline points="10 17 15 12 10 7" />
-                              <line x1="15" y1="12" x2="3" y2="12" />
-                            </svg>
-                          </div>
-                          
-                          <div className="w-full">
-                            <span className={`text-[10px] font-moul block leading-tight ${currentTeacher.signatureInAM ? 'text-emerald-800' : 'text-green-600'}`}>ចូលព្រឹក</span>
-                            {currentTeacher.signatureInAM ? (
-                              <div className="flex flex-col items-center mt-1">
-                                <span className="text-[7.5px] font-mono font-bold text-emerald-600 leading-none">{currentTeacher.timeInAM}</span>
-                                <div className="w-11 h-6 bg-white border border-emerald-100 rounded mt-0.5 p-0.5 flex items-center justify-center">
-                                  <img src={currentTeacher.signatureInAM} alt="signature" className="max-h-full max-w-full object-contain filter contrast-125" referrerPolicy="no-referrer" />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-[8px] text-stone-400 font-sans leading-none mt-1 block">ចុះចតដើម្បីចូល</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 2. AM Check-Out */}
-                        <div 
-                          onClick={() => {
-                            setActiveShift('AM');
-                            setActiveSignatureTarget({ teacherId: currentTeacher.id, type: 'out' });
-                          }}
-                          className={`rounded-[18px] p-2 border text-center flex flex-col items-center justify-between cursor-pointer transition min-h-[110px] ${
-                            currentTeacher.signatureOutAM 
-                              ? 'bg-blue-50/50 border-blue-400 text-blue-850 shadow-sm' 
-                              : 'bg-white hover:bg-stone-50 border-blue-200/80 text-blue-550 shadow-2xs'
-                          }`}
+                          <Share2 className="w-4 h-4 text-stone-700" />
+                        </button>
+                        <button 
+                          type="button"
+                          className="p-1 hover:bg-stone-100 rounded-lg transition shrink-0"
                         >
-                          {/* Circle logout icon in blue */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 shrink-0 ${currentTeacher.signatureOutAM ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-500'}`}>
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                              <polyline points="16 17 21 12 16 7" />
-                              <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                          </div>
-                          
-                          <div className="w-full">
-                            <span className={`text-[10px] font-moul block leading-tight ${currentTeacher.signatureOutAM ? 'text-blue-850' : 'text-blue-550'}`}>ចេញព្រឹក</span>
-                            {currentTeacher.signatureOutAM ? (
-                              <div className="flex flex-col items-center mt-1">
-                                <span className="text-[7.5px] font-mono font-bold text-blue-600 leading-none">{currentTeacher.timeOutAM}</span>
-                                <div className="w-11 h-6 bg-white border border-blue-100 rounded mt-0.5 p-0.5 flex items-center justify-center">
-                                  <img src={currentTeacher.signatureOutAM} alt="signature" className="max-h-full max-w-full object-contain filter contrast-125" referrerPolicy="no-referrer" />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-[8px] text-stone-400 font-sans leading-none mt-1 block">ចុះចតដើម្បីចេញ</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 3. PM Check-In */}
-                        <div 
-                          onClick={() => {
-                            setActiveShift('PM');
-                            setActiveSignatureTarget({ teacherId: currentTeacher.id, type: 'in' });
-                          }}
-                          className={`rounded-[18px] p-2 border text-center flex flex-col items-center justify-between cursor-pointer transition min-h-[110px] ${
-                            currentTeacher.signatureInPM 
-                              ? 'bg-amber-50/50 border-amber-400 text-amber-850 shadow-sm' 
-                              : 'bg-white hover:bg-stone-50 border-amber-250 text-amber-600 shadow-2xs'
-                          }`}
-                        >
-                          {/* Circle login icon in yellow */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 shrink-0 ${currentTeacher.signatureInPM ? 'bg-amber-100 text-amber-700' : 'bg-amber-50 text-amber-500'}`}>
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                              <polyline points="10 17 15 12 10 7" />
-                              <line x1="15" y1="12" x2="3" y2="12" />
-                            </svg>
-                          </div>
-                          
-                          <div className="w-full">
-                            <span className={`text-[10px] font-moul block leading-tight ${currentTeacher.signatureInPM ? 'text-amber-850' : 'text-amber-550'}`}>ចូលរសៀល</span>
-                            {currentTeacher.signatureInPM ? (
-                              <div className="flex flex-col items-center mt-1">
-                                <span className="text-[7.5px] font-mono font-bold text-amber-600 leading-none">{currentTeacher.timeInPM}</span>
-                                <div className="w-11 h-6 bg-white border border-amber-100 rounded mt-0.5 p-0.5 flex items-center justify-center">
-                                  <img src={currentTeacher.signatureInPM} alt="signature" className="max-h-full max-w-full object-contain filter contrast-125" referrerPolicy="no-referrer" />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-[8px] text-stone-400 font-sans leading-none mt-1 block">ចុះចតដើម្បីចូល</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 4. PM Check-Out */}
-                        <div 
-                          onClick={() => {
-                            setActiveShift('PM');
-                            setActiveSignatureTarget({ teacherId: currentTeacher.id, type: 'out' });
-                          }}
-                          className={`rounded-[18px] p-2 border text-center flex flex-col items-center justify-between cursor-pointer transition min-h-[110px] ${
-                            currentTeacher.signatureOutPM 
-                              ? 'bg-rose-50/50 border-rose-450 text-rose-850 shadow-sm' 
-                              : 'bg-white hover:bg-stone-50 border-rose-200 text-rose-500/90 shadow-2xs'
-                          }`}
-                        >
-                          {/* Circle logout icon in red */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 shrink-0 ${currentTeacher.signatureOutPM ? 'bg-rose-100 text-rose-700' : 'bg-rose-50/70 text-rose-500'}`}>
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                              <polyline points="16 17 21 12 16 7" />
-                              <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                          </div>
-                          
-                          <div className="w-full">
-                            <span className={`text-[10px] font-moul block leading-tight ${currentTeacher.signatureOutPM ? 'text-rose-850' : 'text-rose-500/90'}`}>ចេញរសៀល</span>
-                            {currentTeacher.signatureOutPM ? (
-                              <div className="flex flex-col items-center mt-1">
-                                <span className="text-[7.5px] font-mono font-bold text-rose-600 leading-none">{currentTeacher.timeOutPM}</span>
-                                <div className="w-11 h-6 bg-white border border-rose-100 rounded mt-0.5 p-0.5 flex items-center justify-center">
-                                  <img src={currentTeacher.signatureOutPM} alt="signature" className="max-h-full max-w-full object-contain filter contrast-125" referrerPolicy="no-referrer" />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-[8px] text-stone-400 font-sans leading-none mt-1 block">ចុះចតដើម្បីចេញ</span>
-                            )}
-                          </div>
-                        </div>
-
+                          <MoreVertical className="w-4 h-4 text-stone-700" />
+                        </button>
                       </div>
-
-                      {/* My Course Detail with Circular state gauge */}
-                      <div className="bg-white rounded-3xl p-4 border border-stone-100 shadow-sm flex flex-col gap-3.5">
-                        <div className="flex justify-between items-center pb-2 border-b border-stone-100">
-                          <span className="font-moul text-[10.5px] text-stone-800">វគ្គសិក្សារបស់ខ្ញុំ</span>
-                          <span className="text-[9.5px] text-[#2563eb] cursor-pointer hover:underline">មើលទាំងអស់ &rsaquo;</span>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-4">
-                          {/* Course title details */}
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg shadow-sm shrink-0">
-                              🏫
-                            </div>
-                            <div>
-                              <h5 className="font-sans font-extrabold text-[11px] text-stone-800 max-w-[200px] leading-tight">
-                                ខេត្តបាត់ដំបង_GEIP-AF_ការគ្រប់គ្រងសាលារៀន
-                              </h5>
-                              <p className="text-[9px] font-sans text-stone-450 mt-1">ដើម្បីគាំទ្រការអនុវត្តន៍ស្តង់ដារសាលារៀនគំរូ</p>
-                              <p className="text-[8.5px] font-mono text-[#b45309] font-semibold mt-1 bg-amber-50 rounded px-1.5 py-0.5 w-max">
-                                📅 18 ឧសភា - 24 ឧសភា 2026
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Beautiful SVG circular gauge */}
-                          <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                            {/* SVG track */}
-                            <svg className="w-full h-full rotate-[-95deg]">
-                              <circle cx="28" cy="28" r="22" stroke="#e2e8f0" strokeWidth="4" fill="transparent" />
-                              <circle cx="28" cy="28" r="22" stroke="#4f46e5" strokeWidth="4" strokeDasharray="138" strokeDashoffset="55" fill="transparent" strokeLinecap="round" />
-                            </svg>
-                            <span className="absolute text-[11px] font-sans font-bold text-indigo-750">
-                              {convertToKhmerDigits(40)}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                       {/* Explore Categories (Bento Grid) mimicking user screenshot exactly */}
-                      <div className="flex flex-col gap-2.5">
-                        <div className="flex justify-between items-center">
-                          <span className="font-moul text-[10.5px] text-stone-800">ស្វែងរកវគ្គបណ្តុះបណ្តាល</span>
-                          <span className="text-[9.5px] text-[#2563eb] cursor-pointer hover:underline font-sans font-semibold">ទាំងអស់ &rsaquo;</span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2.5">
-                          {/* 1. Mathematics (Green block) */}
-                          <div className="bg-[#10b981] hover:bg-[#059669] p-3 rounded-2xl text-white shadow-xs flex flex-col justify-between aspect-video relative overflow-hidden cursor-pointer transition">
-                            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-[10px] font-sans font-bold">123</div>
-                            <div className="relative z-10 mt-2">
-                              <h6 className="font-moul text-[9.5px] leading-tight mb-0.5">គណិតវិទ្យា</h6>
-                              <p className="text-[8px] opacity-90 font-sans">{convertToKhmerDigits(14)} វគ្គសិក្សា</p>
-                            </div>
-                            <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-white/10 rounded-full"></div>
-                          </div>
-
-                          {/* 2. Pedagogical Counseling (Brown-Orange block) */}
-                          <div className="bg-[#c2410c] hover:bg-[#a23207] p-3 rounded-2xl text-white shadow-xs flex flex-col justify-between aspect-video relative overflow-hidden cursor-pointer transition">
-                            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-xs">🧑‍🏫</div>
-                            <div className="relative z-10 mt-2">
-                              <h6 className="font-moul text-[9.5px] leading-tight mb-0.5">ប្រឹក្សាគរុកោសល្យ</h6>
-                              <p className="text-[8px] opacity-90 font-sans">{convertToKhmerDigits(9)} វគ្គសិក្សា</p>
-                            </div>
-                            <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-white/10 rounded-full"></div>
-                          </div>
-
-                          {/* 3. Others (Slate block - ផ្សេងៗ) */}
-                          <div className="bg-slate-600 hover:bg-slate-700 p-3 rounded-2xl text-white shadow-xs flex flex-col justify-between aspect-video relative overflow-hidden cursor-pointer transition">
-                            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-xs">📝</div>
-                            <div className="relative z-10 mt-2">
-                              <h6 className="font-moul text-[9.5px] leading-tight mb-0.5">ផ្សេង ៗ</h6>
-                              <p className="text-[8px] opacity-90 font-sans">{convertToKhmerDigits(13)} វគ្គសិក្សា</p>
-                            </div>
-                            <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-white/10 rounded-full"></div>
-                          </div>
-
-                          {/* 4. Model School standard (Orange block) */}
-                          <div className="bg-[#ea580c] hover:bg-[#d94e06] p-3 rounded-2xl text-white shadow-xs flex flex-col justify-between aspect-video relative overflow-hidden cursor-pointer transition">
-                            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-xs">🏫</div>
-                            <div className="relative z-10 mt-2">
-                              <h6 className="font-moul text-[9.5px] leading-tight mb-0.5">ស្តង់ដាសាលាគំរូ</h6>
-                              <p className="text-[8px] opacity-90 font-sans">{convertToKhmerDigits(8)} វគ្គសិក្សា</p>
-                            </div>
-                            <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-white/10 rounded-full"></div>
-                          </div>
-
-                          {/* 5. Reading (Cobalt Blue block) */}
-                          <div className="bg-blue-600 hover:bg-blue-700 col-span-2 p-3.5 rounded-2xl text-white shadow-xs flex items-center justify-between relative overflow-hidden cursor-pointer transition">
-                            <div className="flex items-center gap-3 relative z-10">
-                              <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-xs">📖</div>
-                              <div>
-                                <h6 className="font-moul text-[9.5px] leading-none mb-0.5">អំណាន</h6>
-                                <p className="text-[8px] opacity-90 font-sans">{convertToKhmerDigits(2)} វគ្គសិក្សា</p>
-                              </div>
-                            </div>
-                            <div className="absolute right-[-15px] bottom-[-15px] w-16 h-16 bg-white/10 rounded-full"></div>
-                          </div>
-                        </div>
-                      </div>
-
                     </div>
 
-                    {/* Simulator Bottom Navigation persistent Tab Bar */}
-                    <div className="absolute bottom-0 inset-x-0 h-14 bg-white border-t border-stone-200/50 px-4 flex items-center justify-between text-[8px] font-sans font-bold text-stone-400 z-20">
-                      <div className="flex flex-col items-center gap-1 text-blue-600 cursor-pointer">
-                        <span className="text-lg leading-none">🏠</span>
-                        <span className="scale-95">ទំព័រដើម</span>
+                    {/* Simulator App Content Area (Responsive container layout) */}
+                    <div className="p-3 flex-grow flex flex-col gap-3.5 overflow-y-auto max-h-[640px] scrollbar-none bg-[#f1f5f9] [content-visibility:auto] pb-8">
+                      
+                      {/* SCREEN 1: COURSE LANDING PAGE DETAILS (HOME) */}
+                      {mobileScreen === 'home' && (
+                        <div className="flex flex-col gap-3.5">
+                          {/* Top Logo Card */}
+                          <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col items-center justify-center gap-2 mt-1">
+                            <div className="bg-amber-500/5 p-1 rounded-full border border-amber-400/20">
+                              <svg className="w-14 h-14" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="50" cy="50" r="45" fill="#f8fafc" stroke="#1d4ed8" strokeWidth="2.5" />
+                                <circle cx="50" cy="50" r="39" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="3 3" />
+                                {/* Open book representation */}
+                                <path d="M35 60 C42 55, 48 58, 50 62 C52 58, 58 55, 65 60 L65 42 C58 38, 52 40, 50 44 C48 40, 42 38, 35 42 Z" fill="#2563eb" stroke="#1e3a8a" strokeWidth="1" />
+                                {/* Flame of knowledge / Crown */}
+                                <path d="M50 22 C48 30, 42 35, 46 45 C48 42, 52 42, 54 45 C58 35, 52 30, 50 22 Z" fill="#f59e0b" stroke="#d97706" strokeWidth="0.8" />
+                                {/* Central structure */}
+                                <line x1="50" y1="44" x2="50" y2="62" stroke="#fbbf24" strokeWidth="1.5" />
+                                <circle cx="32" cy="35" r="1.5" fill="#fbbf24" />
+                                <circle cx="68" cy="35" r="1.5" fill="#fbbf24" />
+                                <circle cx="50" cy="16" r="2" fill="#ef4444" />
+                              </svg>
+                            </div>
+                            <h3 className="font-moul text-[11.5px] text-stone-850 font-bold leading-tight text-center tracking-wide mt-1">
+                              ចុះឈ្មោះចូលរួមវគ្គសិក្សា
+                            </h3>
+                          </div>
+
+                          {/* Dynamic status card matching exact screenshot details */}
+                          <div className="bg-white p-4.5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col gap-3 font-sans">
+                            {/* Badges row matching original user image precisely */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* 1. ONGOING badge */}
+                              <span className="text-[7.5px] tracking-wider font-mono font-bold text-stone-500 bg-stone-100 border border-stone-250 px-2 py-0.5 rounded-md uppercase">
+                                ONGOING
+                              </span>
+                              
+                              {/* 2. Completed cross boundary */}
+                              <span className="text-[8px] font-bold text-rose-500 bg-rose-50/50 border border-rose-100 px-2 py-0.5 rounded-md">
+                                បានបញ្ចប់
+                              </span>
+
+                              {/* 3. Registered successfully (Pulse if logged in) */}
+                              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 transition-all ${
+                                loginSuccessShow || isRegistered
+                                  ? 'bg-blue-100 text-blue-700 border border-blue-300 shadow-2xs animate-pulse font-extrabold'
+                                  : 'bg-blue-50 text-blue-600/80 border border-blue-200/50'
+                              }`}>
+                                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                <span>បានចុះឈ្មោះរួចហើយ</span>
+                              </span>
+                            </div>
+
+                            {/* Main Subject Title */}
+                            <h4 className="font-moul text-[11.5px] text-slate-900 leading-relaxed font-bold tracking-tight mt-1">
+                              ខេត្តបាត់ដំបង_GEIP-AF_ការគ្របគ្រងសាលារៀន ដើម្បីគាំទ្រការអនុវត្តស្តង់ដាសាលារៀនគំរូ
+                            </h4>
+
+                            <div className="border-t border-stone-100/85 my-0.5"></div>
+
+                            {/* Details list item with icons */}
+                            <div className="flex flex-col gap-2.5 text-[10px] text-stone-600">
+                              {/* Date */}
+                              <div className="flex items-start gap-2.5">
+                                <span className="text-stone-400 mt-0.5 text-xs">📅</span>
+                                <div>
+                                  <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">កាលបរិច្ឆេទ៖</span>
+                                  <span className="font-semibold text-stone-800">18 ឧសភា 2026 - 24 ឧសភា 2026</span>
+                                </div>
+                              </div>
+
+                              {/* Location */}
+                              <div className="flex items-start gap-2.5">
+                                <span className="text-stone-400 mt-0.5 text-xs">📍</span>
+                                <div>
+                                  <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">ទីតាំង៖</span>
+                                  <span className="font-semibold text-stone-850">Phnom Penh</span>
+                                </div>
+                              </div>
+
+                              {/* Participants count */}
+                              <div className="flex items-start gap-2.5">
+                                <span className="text-stone-400 mt-0.5 text-xs">👥</span>
+                                <div>
+                                  <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">អ្នកចូលរួម៖</span>
+                                  <span className="font-mono font-bold text-stone-850 text-[10.5px]">
+                                    {loginSuccessShow ? '1356' : '1355'} <span className="text-stone-400 text-[9.5px] font-sans">/ 1700 នាក់</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="border-t border-stone-100/85 my-0.5"></div>
+
+                            {/* Blue alert card: Requires Login or Registered Teacher info */}
+                            <div className="bg-[#eff6ff] border border-blue-100/80 p-3 rounded-xl flex flex-col gap-2">
+                              
+                              {/* Info header */}
+                              <div className="flex items-center gap-1.5 text-[#2563eb]">
+                                <div className="bg-[#2563eb] text-white w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0">
+                                  i
+                                </div>
+                                <span className="font-moul text-[9.5px] font-bold">ត្រូវការចូលប្រើ</span>
+                              </div>
+
+                              <p className="text-[9px] text-[#2563eb] leading-relaxed font-semibold pl-5">
+                                {loginSuccessShow 
+                                  ? `ស្វាគមន៍! លោកគ្រូ/អ្នកគ្រូ «${currentTeacher.name}» វត្តមានរបស់អ្នកត្រូវបានកត់ត្រាក្នុងថ្នាក់ជាតិរួចរាល់។`
+                                  : "សូមចូលប្រើ ឬចុះឈ្មោះដើម្បីចូលរួមវគ្គសិក្សានេះ"}
+                              </p>
+
+                              {/* Conditional Action Buttons */}
+                              <div className="pl-5 mt-1">
+                                {!loginSuccessShow ? (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setMobileScreen('login')}
+                                      className="bg-blue-600 hover:bg-blue-700 text-white font-sans text-[10px] font-bold py-1.5 px-4 rounded-lg flex items-center gap-1 shadow-sm transition hover:scale-102 cursor-pointer border-none"
+                                    >
+                                      <LogIn className="w-3.5 h-3.5" />
+                                      <span>ចូលប្រើ</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setMobileScreen('registration')}
+                                      className="bg-white hover:bg-slate-50 text-stone-700 font-sans text-[10px] font-semibold py-1.5 px-3.5 rounded-lg border border-stone-250 flex items-center gap-1 shadow-2xs transition hover:scale-102 cursor-pointer"
+                                    >
+                                      <UserPlus className="w-3.5 h-3.5 text-stone-500" />
+                                      <span>ចុះឈ្មោះ</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-2">
+                                    {/* Action row with active teacher indicator */}
+                                    <div className="flex items-center justify-between bg-white/70 p-2 rounded-lg border border-blue-100/50">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[12px]">👩‍🏫</span>
+                                        <span className="font-moul text-[9px] text-blue-900 truncate max-w-[120px]">{currentTeacher.name}</span>
+                                      </div>
+                                      <span className="bg-emerald-100 text-emerald-800 text-[7px] font-sans px-1.5 py-0.5 rounded-sm uppercase font-bold">
+                                        Active
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          alert("សូមចុះហត្ថលេខាបែបឌីជីថលនៅលើផ្ទះហត្ថលេខា (លោត modal លើអេក្រង់ធំ)!");
+                                          setActiveSignatureTarget({ teacherId: currentTeacher.id, type: 'in' });
+                                        }}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-sans text-[9px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 shadow-sm transition cursor-pointer border-none w-full justify-center"
+                                      >
+                                        <span>✍️ ចុះហត្ថលេខាវត្តមាន</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setLoginSuccessShow(false);
+                                          setIsRegistered(false);
+                                        }}
+                                        className="bg-white text-stone-500 hover:text-stone-800 text-[9px] py-1.5 px-2.5 rounded-lg border border-stone-200 cursor-pointer"
+                                      >
+                                        🚪 ចាកចេញ
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SCREEN 2: MOEYS LOGIN SCREEN */}
+                      {mobileScreen === 'login' && (
+                        <div className="bg-white p-5 rounded-2xl border border-stone-200.80 shadow-xs flex flex-col gap-4 mx-1 font-sans mt-1 animate-fade-in">
+                          {/* Login Screen Header */}
+                          <div className="flex flex-col items-center gap-1.5 text-center">
+                            <span className="text-2xl">🔐</span>
+                            <h4 className="font-moul text-[11px] text-slate-800 leading-tight">ប្រព័ន្ធគ្រប់គ្រងការបណ្តុះបណ្តាល</h4>
+                            <p className="text-[9px] text-stone-400">សូមបំពេញគណនីគ្រូ ឬជ្រើសរើសគ្រូម្នាក់ក្នុងបញ្ជីរហ័ស</p>
+                          </div>
+
+                          <div className="border-t border-stone-100 my-0.5"></div>
+
+                          {/* Quick Auto-Fill Companion for Testing */}
+                          <div className="bg-amber-500/5 border border-amber-200 rounded-xl p-2.5 flex flex-col gap-1.5">
+                            <span className="text-[8.5px] font-bold text-[#b45309] font-sans flex items-center gap-1">
+                              <span>🔗</span> ជ្រើសរើសលោកគ្រូ/អ្នកគ្រូដែលមានស្រាប់ (Quick Autofill):
+                            </span>
+                            <select 
+                              onChange={(e) => {
+                                const matched = teachers.find(t => t.id === e.target.value);
+                                if (matched) {
+                                  setLoginUsername(matched.name);
+                                  setLoginPassword('moeys1234');
+                                  setSelectedTeacherId(matched.id);
+                                }
+                              }}
+                              className="w-full bg-white border border-stone-200 rounded-lg p-1 text-[9.5px] font-sans text-stone-700 outline-none"
+                            >
+                              <option value="">-- ជ្រើសរើសឈ្មោះដើម្បីបំពេញស្វ័យប្រវត្ត --</option>
+                              {teachers.map(t => (
+                                <option key={t.id} value={t.id}>{t.name} ({t.gender})</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Form Section */}
+                          <div className="flex flex-col gap-3 text-stone-700 pr-0">
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[8.5px] font-sans font-bold text-stone-500 uppercase">ឈ្មោះគណនី ឬ អ៊ីមែល (Account/Email)</label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400"><User className="w-3.5 h-3.5" /></span>
+                                <input
+                                  type="text"
+                                  value={loginUsername}
+                                  onChange={(e) => setLoginUsername(e.target.value)}
+                                  placeholder="ឈ្មោះពេញ ឬ អ៊ីមែល..."
+                                  className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50/50 text-[10px] font-sans outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[8.5px] font-sans font-bold text-stone-500 uppercase">លេខសម្ងាត់ (Password)</label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400"><Lock className="w-3.5 h-3.5" /></span>
+                                <input
+                                  type="password"
+                                  value={loginPassword}
+                                  onChange={(e) => setLoginPassword(e.target.value)}
+                                  placeholder="••••••••"
+                                  className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50/50 text-[10px] font-sans outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Actions Group */}
+                            <div className="flex flex-col gap-2 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!loginUsername) {
+                                    alert("សូមជ្រើសរើស ឬវាយបញ្ចូលឈ្មោះគណនីជាមុនសិន!");
+                                    return;
+                                  }
+                                  setIsLoggingIn(true);
+                                  setTimeout(() => {
+                                    setIsLoggingIn(false);
+                                    setLoginSuccessShow(true);
+                                    setIsRegistered(true);
+                                    setMobileScreen('home');
+                                    alert(`🔑 បានចូលប្រើប្រាស់គណនីលោកគ្រូ/អ្នកគ្រូ «${loginUsername}» ដោយជោគជ័យ!`);
+                                  }, 1000);
+                                }}
+                                className="w-full py-2 bg-[#2563eb] hover:bg-blue-700 text-white font-sans text-xs font-bold rounded-xl transition shadow cursor-pointer border-none flex items-center justify-center gap-1.5"
+                                disabled={isLoggingIn}
+                              >
+                                {isLoggingIn ? (
+                                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                  <LogIn className="w-3.5 h-3.5" />
+                                )}
+                                <span>{isLoggingIn ? 'កំពុងផ្ទៀងផ្ទាត់...' : 'ចូលប្រើប្រាស់ជំនួស'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setMobileScreen('home')}
+                                className="w-full py-1.5 bg-white text-stone-500 hover:text-stone-800 text-[10px] font-sans rounded-xl border border-stone-250 transition cursor-pointer"
+                              >
+                                ត្រឡប់ក្រោយ (Back)
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SCREEN 3: MOEYS COURSE REGISTRATION SCREEN */}
+                      {mobileScreen === 'registration' && (
+                        <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col gap-4.5 mx-1 font-sans mt-1 animate-fade-in">
+                          {/* Header */}
+                          <div className="flex flex-col items-center gap-1 text-center">
+                            <span className="text-2xl">📝</span>
+                            <h4 className="font-moul text-[11px] text-slate-800 leading-tight">ចុះឈ្មោះសមាជិកថ្មីគរុកោសល្យ</h4>
+                            <p className="text-[8.5px] text-stone-400">សូមបញ្ចូលព័ត៌មានជាក់លាក់ដើម្បីបង្កើតគណនីគ្រូថ្មី</p>
+                          </div>
+
+                          <div className="border-t border-stone-100 my-0.5"></div>
+
+                          {/* Inputs */}
+                          <div className="flex flex-col gap-3 text-stone-700">
+                            {/* Full Name */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[8.5px] font-sans font-bold text-stone-500 uppercase">គោត្តនាម-នាមខ្លួន (Full Name) <span className="text-red-500">*</span></label>
+                              <input
+                                type="text"
+                                value={regName}
+                                onChange={(e) => setRegName(e.target.value)}
+                                placeholder="ឧ. ឡេង សុភ័ក្ត្រា"
+                                className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-50/50 text-[10px] font-sans outline-none focus:ring-1 focus:ring-emerald-500"
+                              />
+                            </div>
+
+                            {/* Gender selection */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[8.5px] font-sans font-bold text-stone-500 uppercase">ភេទ (Gender)</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setRegGender('ប្រុស')}
+                                  className={`py-1 rounded-lg text-[9.5px] font-bold border transition ${regGender === 'ប្រុស' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-stone-200 text-stone-600'}`}
+                                >
+                                  👨‍🏫 ប្រុស (Male)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRegGender('ស្រី')}
+                                  className={`py-1 rounded-lg text-[9.5px] font-bold border transition ${regGender === 'ស្រី' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-stone-200 text-stone-600'}`}
+                                >
+                                  👩‍🏫 ស្រី (Female)
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Card ID */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[8.5px] font-sans font-bold text-stone-500 uppercase">លេខអត្តសញ្ញាណប័ណ្ណ / លេខគ្រូ</label>
+                              <input
+                                type="text"
+                                value={regId}
+                                onChange={(e) => setRegId(e.target.value)}
+                                placeholder="ឧ. ID-88776"
+                                className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-50/50 text-[10px] font-sans outline-none"
+                              />
+                            </div>
+
+                            {/* Remarks */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[8.5px] font-sans font-bold text-stone-500 uppercase">តួនាទី / កត់សម្គាល់ (Remarks)</label>
+                              <input
+                                type="text"
+                                value={regRemarks}
+                                onChange={(e) => setRegRemarks(e.target.value)}
+                                placeholder="ឧ. គ្រូម៉ាត់ជំនួស, គ្រូថ្នាក់ទី៦..."
+                                className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-50/50 text-[10px] font-sans outline-none"
+                              />
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex flex-col gap-2 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!regName.trim()) {
+                                    alert("សូមវាយបញ្ចូលឈ្មោះពេញរបស់លោកគ្រូ/អ្នកគ្រូ!");
+                                    return;
+                                  }
+                                  setIsRegistering(true);
+                                  setTimeout(() => {
+                                    setIsRegistering(false);
+                                    
+                                    // Dynamically build and prepend teacher to global state
+                                    const newTeacherObj: TeacherRecord = {
+                                      id: `t-reg-${Date.now()}`,
+                                      no: teachers.length + 1,
+                                      name: regName.trim(),
+                                      gender: regGender,
+                                      remarks: regRemarks.trim() || 'ចុះឈ្មោះតាម MoEYS App',
+                                      statusAM: 'វត្តមាន',
+                                      timeInAM: '07:15 AM',
+                                      signatureInAM: null,
+                                      locationInAM: '11.5564° N, 104.9282° E (វិទ្យាល័យ ព្រះស៊ីសុវត្ថិ)',
+                                      timeOutAM: '11:45 AM',
+                                      signatureOutAM: null,
+                                      locationOutAM: null,
+                                      statusPM: 'វត្តមាន',
+                                      timeInPM: '01:15 PM',
+                                      signatureInPM: null,
+                                      locationInPM: null,
+                                      timeOutPM: '05:00 PM',
+                                      signatureOutPM: null,
+                                      locationOutPM: null,
+                                      status: 'វត្តមាន',
+                                      timeIn: '07:15 AM',
+                                      signatureIn: null,
+                                      timeOut: '11:45 AM',
+                                      signatureOut: null
+                                    };
+                                    
+                                    setTeachers([newTeacherObj, ...teachers]);
+                                    setSelectedTeacherId(newTeacherObj.id);
+                                    setLoginUsername(newTeacherObj.name);
+                                    setLoginSuccessShow(true);
+                                    setIsRegistered(true);
+                                    
+                                    // Reset registration inputs
+                                    setRegName('');
+                                    setRegId('');
+                                    setRegPhone('');
+                                    setRegRemarks('');
+                                    
+                                    setMobileScreen('home');
+                                    alert(`🎉 បានចុះឈ្មោះលោកគ្រូ/អ្នកគ្រូ «${newTeacherObj.name}» ចូលក្នុងបញ្ជីថ្នាក់ជាតិដោយជោគជ័យ!`);
+                                  }, 1100);
+                                }}
+                                className="w-full py-2 bg-[#10b981] hover:bg-emerald-600 text-white font-sans text-xs font-bold rounded-xl transition shadow cursor-pointer border-none flex items-center justify-center gap-1.5"
+                                disabled={isRegistering}
+                              >
+                                {isRegistering ? (
+                                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                  <Plus className="w-3.5 h-3.5" />
+                                )}
+                                <span>{isRegistering ? 'កំពុងបញ្ជូនទិន្នន័យ...' : 'ចុះឈ្មោះ និងចងវត្តមាន'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setMobileScreen('home')}
+                                className="w-full py-1.5 bg-white text-stone-500 hover:text-stone-800 text-[10px] font-sans rounded-xl border border-stone-250 transition cursor-pointer"
+                              >
+                                បោះបង់ (Cancel)
+                              </button>
+                            </div>
+
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Footer block matching screenshot footer copyright block */}
+                      <div className="text-center text-[8px] text-[#94a3b8] font-sans py-2.5 mt-auto select-none">
+                        © ២០២៥ ក្រសួងអប់រំ យុវជន និងកីឡា
                       </div>
-                      <div className="flex flex-col items-center gap-1 hover:text-stone-850 cursor-pointer">
-                        <span className="text-lg leading-none">📚</span>
-                        <span className="scale-95 text-stone-500">វគ្គសិក្សា</span>
-                      </div>
-                      <div className="flex flex-col items-center gap-1 hover:text-stone-850 cursor-pointer">
-                        <span className="text-lg leading-none">🏆</span>
-                        <span className="scale-95 text-stone-500">វឌ្ឍនភាព</span>
-                      </div>
-                      <div className="flex flex-col items-center gap-1 hover:text-stone-850 cursor-pointer">
-                        <span className="text-lg leading-none">🔍</span>
-                        <span className="scale-95 text-stone-500">ស្វែងរក</span>
-                      </div>
-                      <div className="flex flex-col items-center gap-1 hover:text-stone-850 cursor-pointer">
-                        <span className="text-lg leading-none">👤</span>
-                        <span className="scale-95 text-stone-500">គណនី</span>
-                      </div>
+
                     </div>
 
                     {/* Physical device Android soft buttons */}
@@ -2197,6 +2470,7 @@ export default function App() {
                 return activeSignatureTarget.type === 'in' ? currentTeacher.signatureInPM : currentTeacher.signatureOutPM;
               }
             })() || undefined}
+            initialMethod={preferredSignatureMethod}
             onSave={handleSaveSignature}
             onClose={() => setActiveSignatureTarget(null)}
           />

@@ -15,16 +15,17 @@ interface SignaturePadProps {
   onSave: (signatureDataUrl: string) => void;
   onClose: () => void;
   initialSignature?: string | null;
+  initialMethod?: MethodType;
 }
 
 type MethodType = 'draw' | 'camera' | 'upload';
 
-export default function SignaturePad({ onSave, onClose, initialSignature }: SignaturePadProps) {
+export default function SignaturePad({ onSave, onClose, initialSignature, initialMethod = 'draw' }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
-  const [activeMethod, setActiveMethod] = useState<MethodType>('draw');
+  const [activeMethod, setActiveMethod] = useState<MethodType>(initialMethod);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
   
@@ -84,12 +85,17 @@ export default function SignaturePad({ onSave, onClose, initialSignature }: Sign
     }
   }, [penColor, penWidth, scanThreshold, isolateContrast]);
 
-  // Close camera stream on unmount
+  // Automatically manage camera activation based on chosen method
   useEffect(() => {
+    if (activeMethod === 'camera') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
     return () => {
       stopCamera();
     };
-  }, [stream]);
+  }, [activeMethod]);
 
   // Coordinate getters
   const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
