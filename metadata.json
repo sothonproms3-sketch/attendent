@@ -1,0 +1,10 @@
+{
+  "name": "បញ្ជីវត្តមានលោកគ្រូអ្នកគ្រូ",
+  "description": "កម្មវិធីគ្រប់គ្រង និងស្រង់វត្តមានលោកគ្រូអ្នកគ្រូ ព្រមទាំងនាំចេញជា/បោះពុម្ពជា PDF, Excel, Word ជាមួយនឹងហត្ថលេខាឌីជីថល បាវចនាជាតិ និងការបរិច្ឆេទចន្ទគតិ-សុរិយគតិ",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

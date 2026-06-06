@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Moul&family=Battambang:wght@400;700&family=Siemreap&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Cinzel:wght@400..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Kantumruy Pro', sans-serif;
+  --font-serif: 'EB Garamond', 'Playfair Display', serif;
+  --font-display: 'Cinzel', serif;
+  --font-moul: 'Moul', cursive;
+  --font-battambang: 'Battambang', sans-serif;
+  --font-siemreap: 'Siemreap', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --color-brand-blue: #8c2d19;
+  --color-brand-gold: #c5a059;
+}
+
+/* Base custom styles to ensure Khmer fonts render smoothly */
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom styles for printing */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 1.2cm;
+  }
+  
+  body {
+    background-color: white !important;
+    color: #000000 !important;
+    font-family: var(--font-siemreap), sans-serif;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Force hide all editing sidebars, headers, app layouts, actions */
+  header, nav, aside, .no-print, button, form, .bg-indigo-600 {
+    display: none !important;
+  }
+
+  /* Target exact document dimensions for physical printing */
+  .print-document-sheet {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Specific table optimizations for print ink and accuracy */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    page-break-inside: auto !important;
+  }
+  
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color: #000 !important;
+    border: 1px solid #000 !important;
+  }
+
+  td {
+    border: 1px solid #000 !important;
+    color: #000 !important;
+  }
+
+  /* Keep table texts fully clear in Khmer Battambang */
+  .khmer-table-text {
+    font-family: var(--font-battambang) !important;
+  }
+
+  .khmer-moul-text {
+    font-family: var(--font-moul) !important;
+  }
+}
