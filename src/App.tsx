@@ -291,6 +291,10 @@ export default function App() {
   const [simLocation, setSimLocation] = useState(() => {
     return localStorage.getItem('SIM_LOCATION') || 'Phnom Penh';
   });
+  const [simUseActualCount, setSimUseActualCount] = useState(() => {
+    const val = localStorage.getItem('SIM_USE_ACTUAL_COUNT');
+    return val !== null ? val === 'true' : true; // Default to true for auto counting actual teachers
+  });
   const [simEnrollCurrent, setSimEnrollCurrent] = useState(() => {
     return parseInt(localStorage.getItem('SIM_ENROLL_CURRENT') || '1355') || 1355;
   });
@@ -872,32 +876,48 @@ export default function App() {
                       </div>
 
                       {/* Counter Current & Max */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col gap-1">
-                          <label className="font-bold text-stone-700">ចំនួនចុះឈ្មោះ (Current):</label>
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center gap-2 text-[10px] font-sans text-stone-700 cursor-pointer select-none font-bold">
                           <input
-                            type="number"
-                            value={simEnrollCurrent}
+                            type="checkbox"
+                            checked={simUseActualCount}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value) || 0;
-                              setSimEnrollCurrent(val);
-                              localStorage.setItem('SIM_ENROLL_CURRENT', val.toString());
+                              setSimUseActualCount(e.target.checked);
+                              localStorage.setItem('SIM_USE_ACTUAL_COUNT', e.target.checked.toString());
                             }}
-                            className="w-full px-3 py-1.5 rounded-lg text-[11px] font-mono bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-bold"
+                            className="w-4 h-4 text-[#ea580c] rounded border-stone-300 focus:ring-[#ea580c]"
                           />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-bold text-stone-700">កម្រិតខ្ពស់បំផុត (Max Cap):</label>
-                          <input
-                            type="number"
-                            value={simEnrollMax}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 0;
-                              setSimEnrollMax(val);
-                              localStorage.setItem('SIM_ENROLL_MAX', val.toString());
-                            }}
-                            className="w-full px-3 py-1.5 rounded-lg text-[11px] font-mono bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-bold"
-                          />
+                          <span className="text-[#ea580c] flex items-center gap-1">📊 រាប់ស្វ័យប្រវត្តិតាមបញ្ជីគ្រូបច្ចុប្បន្ន ({teachers.length} នាក់)</span>
+                        </label>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-1">
+                            <label className="font-bold text-stone-650 text-[9.5px]">ចំនួនចុះឈ្មោះ (Current):</label>
+                            <input
+                              type="number"
+                              disabled={simUseActualCount}
+                              value={simUseActualCount ? teachers.length : simEnrollCurrent}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setSimEnrollCurrent(val);
+                                localStorage.setItem('SIM_ENROLL_CURRENT', val.toString());
+                              }}
+                              className={`w-full px-3 py-1.5 rounded-lg text-[11px] font-mono border focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-bold ${simUseActualCount ? 'bg-stone-50 border-stone-200 text-stone-400 cursor-not-allowed' : 'bg-white border-stone-250 text-stone-800'}`}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="font-bold text-stone-650 text-[9.5px]">កម្រិតខ្ពស់បំផុត (Max Cap):</label>
+                            <input
+                              type="number"
+                              value={simEnrollMax}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setSimEnrollMax(val);
+                                localStorage.setItem('SIM_ENROLL_MAX', val.toString());
+                              }}
+                              className="w-full px-3 py-1.5 rounded-lg text-[11px] font-mono bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-bold"
+                            />
+                          </div>
                         </div>
                       </div>
 
@@ -1259,41 +1279,121 @@ export default function App() {
                             </div>
 
                             {/* Main Subject Title */}
-                            <h4 className="font-moul text-[11.5px] text-slate-900 leading-relaxed font-bold tracking-tight mt-1">
-                              {simCourseTitle}
-                            </h4>
+                            <div className="relative group/course mt-1">
+                              <textarea
+                                value={simCourseTitle}
+                                onChange={(e) => {
+                                  setSimCourseTitle(e.target.value);
+                                  localStorage.setItem('SIM_COURSE_TITLE', e.target.value);
+                                }}
+                                className="w-full text-left font-moul text-[11.5px] text-slate-900 leading-relaxed font-bold tracking-tight bg-transparent hover:bg-orange-50/50 focus:bg-white border border-transparent hover:border-dashed hover:border-orange-355 focus:border-orange-550 rounded-lg p-1 transition-all outline-none resize-none"
+                                rows={2}
+                                placeholder="បំពេញឈ្មោះវគ្គសិក្សាក្នុងទូរស័ព្ទដៃ..."
+                              />
+                              <div className="absolute top-0 right-0 opacity-0 group-hover/course:opacity-100 transition text-[9px] text-[#ea580c] font-sans font-bold bg-orange-50 px-1.5 py-0.5 rounded-md border border-orange-200 pointer-events-none select-none z-10">
+                                កែប្រែ (Edit)
+                              </div>
+                            </div>
 
                             <div className="border-t border-stone-100/85 my-0.5"></div>
 
                             {/* Details list item with icons */}
                             <div className="flex flex-col gap-2.5 text-[10px] text-stone-600">
                               {/* Date */}
-                              <div className="flex items-start gap-2.5">
-                                <span className="text-stone-400 mt-0.5 text-xs">📅</span>
-                                <div>
+                              <div className="flex items-start gap-2.5 group/date relative">
+                                <span className="text-stone-400 mt-0.5 text-xs col-span-1">📅</span>
+                                <div className="flex-grow min-w-0">
                                   <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">កាលបរិច្ឆេទ៖</span>
-                                  <span className="font-semibold text-stone-800">{simDateRange}</span>
+                                  <input
+                                    type="text"
+                                    value={simDateRange}
+                                    onChange={(e) => {
+                                      setSimDateRange(e.target.value);
+                                      localStorage.setItem('SIM_DATE_RANGE', e.target.value);
+                                    }}
+                                    className="font-semibold text-stone-800 bg-transparent hover:bg-orange-50/50 focus:bg-white border border-transparent hover:border-dashed hover:border-orange-350 focus:border-orange-500 rounded px-1.5 py-0.5 w-full outline-none transition-all block text-[10px]"
+                                    placeholder="បញ្ចូលកាលបរិច្ឆេទ..."
+                                  />
                                 </div>
+                                <span className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/date:opacity-100 transition text-[7.5px] text-[#ea580c] font-sans font-bold bg-orange-50 px-1 py-0.2 rounded border border-orange-200 pointer-events-none select-none z-10">
+                                  កែប្រែ
+                                </span>
                               </div>
 
                               {/* Location */}
-                              <div className="flex items-start gap-2.5">
+                              <div className="flex items-start gap-2.5 group/location relative">
                                 <span className="text-stone-400 mt-0.5 text-xs">📍</span>
-                                <div>
+                                <div className="flex-grow min-w-0">
                                   <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">ទីតាំង៖</span>
-                                  <span className="font-semibold text-stone-850">{simLocation}</span>
+                                  <input
+                                    type="text"
+                                    value={simLocation}
+                                    onChange={(e) => {
+                                      setSimLocation(e.target.value);
+                                      localStorage.setItem('SIM_LOCATION', e.target.value);
+                                    }}
+                                    className="font-semibold text-stone-850 bg-transparent hover:bg-orange-50/50 focus:bg-white border border-transparent hover:border-dashed hover:border-orange-350 focus:border-orange-500 rounded px-1.5 py-0.5 w-full outline-none transition-all block text-[10px]"
+                                    placeholder="បញ្ចូលទីតាំង..."
+                                  />
                                 </div>
+                                <span className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/location:opacity-100 transition text-[7.5px] text-[#ea580c] font-sans font-bold bg-orange-50 px-1 py-0.2 rounded border border-orange-200 pointer-events-none select-none z-10">
+                                  កែប្រែ
+                                </span>
                               </div>
 
                               {/* Participants count */}
-                              <div className="flex items-start gap-2.5">
+                              <div className="flex items-start gap-2.5 group/enroll relative">
                                 <span className="text-stone-400 mt-0.5 text-xs">👥</span>
-                                <div>
-                                  <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">អ្នកចូលរួម៖</span>
-                                  <span className="font-mono font-bold text-stone-850 text-[10.5px]">
-                                    {loginSuccessShow ? (simEnrollCurrent + 1) : simEnrollCurrent} <span className="text-stone-400 text-[9.5px] font-sans">/ {simEnrollMax} នាក់</span>
-                                  </span>
+                                <div className="flex-grow min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="block font-bold text-stone-400 text-[8.5px] uppercase tracking-wide">អ្នកចូលរួម៖</span>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const next = !simUseActualCount;
+                                        setSimUseActualCount(next);
+                                        localStorage.setItem('SIM_USE_ACTUAL_COUNT', next.toString());
+                                      }}
+                                      className="text-[7px] font-sans font-extrabold text-[#ea580c] hover:underline cursor-pointer bg-orange-50 hover:bg-orange-100 border border-orange-200 px-1 rounded transition-all leading-none focus:outline-none"
+                                    >
+                                      {simUseActualCount ? "⚙️ បំពពេញដៃ" : "✨ ចំនួនពិត"}
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center gap-1 mt-0.5 font-mono text-[10px]">
+                                    {simUseActualCount ? (
+                                      <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 text-center min-w-[32px] inline-flex items-center gap-0.5" title="រាប់ស្វ័យប្រវត្តិតាមចំនួនក្នុងបញ្ជី">
+                                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block animate-pulse"></span>
+                                        {teachers.length}
+                                      </span>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        value={simEnrollCurrent}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 0;
+                                          setSimEnrollCurrent(val);
+                                          localStorage.setItem('SIM_ENROLL_CURRENT', val.toString());
+                                        }}
+                                        className="font-bold text-stone-850 bg-transparent hover:bg-orange-50/50 focus:bg-white border border-transparent hover:border-dashed hover:border-orange-200 focus:border-orange-500 rounded w-12 text-center outline-none transition-all py-0.5"
+                                      />
+                                    )}
+                                    <span className="text-stone-400 text-[9.5px] font-sans">/</span>
+                                    <input
+                                      type="number"
+                                      value={simEnrollMax}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        setSimEnrollMax(val);
+                                        localStorage.setItem('SIM_ENROLL_MAX', val.toString());
+                                      }}
+                                      className="font-bold text-stone-400 bg-transparent hover:bg-orange-50/50 focus:bg-white border border-transparent hover:border-dashed hover:border-orange-200 focus:border-orange-500 rounded w-14 text-center outline-none transition-all py-0.5"
+                                    />
+                                    <span className="text-stone-400 text-[9.5px] font-sans">នាក់</span>
+                                  </div>
                                 </div>
+                                <span className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/enroll:opacity-100 transition text-[7.5px] text-[#ea580c] font-sans font-bold bg-orange-50 px-1 py-0.2 rounded border border-orange-200 pointer-events-none select-none z-10">
+                                  កែប្រែ
+                                </span>
                               </div>
                             </div>
 
@@ -2622,17 +2722,33 @@ export default function App() {
                     />
                   </div>
 
+                  <div className="flex flex-col gap-1.5 col-span-1 md:col-span-2 bg-[#f4f2ee]/40 p-3 rounded-xl border border-stone-200/65">
+                    <label className="flex items-center gap-2 text-xs font-sans text-stone-700 cursor-pointer select-none font-bold">
+                      <input
+                        type="checkbox"
+                        checked={simUseActualCount}
+                        onChange={(e) => {
+                          setSimUseActualCount(e.target.checked);
+                          localStorage.setItem('SIM_USE_ACTUAL_COUNT', e.target.checked.toString());
+                        }}
+                        className="w-4 h-4 text-[#ea580c] rounded border-stone-300 focus:ring-[#ea580c]"
+                      />
+                      <span className="text-[#ea580c]">✨ ប្រើប្រាស់ចំនួនពិតប្រាកដ រាប់ស្វ័យប្រវត្តិតាមបញ្ជីគ្រូបច្ចុប្បន្ន ({teachers.length} នាក់) - (Autofill)</span>
+                    </label>
+                  </div>
+
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-sans font-bold text-stone-700">ចំនួនចុះឈ្មោះបច្ចុប្បន្ន (Current Enrolled)</label>
                     <input
                       type="number"
-                      value={simEnrollCurrent}
+                      disabled={simUseActualCount}
+                      value={simUseActualCount ? teachers.length : simEnrollCurrent}
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 0;
                         setSimEnrollCurrent(val);
                         localStorage.setItem('SIM_ENROLL_CURRENT', val.toString());
                       }}
-                      className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-mono text-stone-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
+                      className={`w-full px-4 py-2 border rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-[#ea580c] ${simUseActualCount ? 'bg-stone-100 border-stone-200 text-stone-400 cursor-not-allowed' : 'bg-white border-stone-200 text-stone-800'}`}
                     />
                   </div>
 
