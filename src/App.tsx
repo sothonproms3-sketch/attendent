@@ -873,6 +873,66 @@ export default function App() {
                           }}
                           className="w-full px-3 py-1.5 rounded-lg text-[11px] font-sans bg-white border border-stone-250 text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#ea580c] shadow-2xs font-semibold"
                         />
+                        {/* Preset options */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSimLocation('🏠 ផ្ទះ (Home)');
+                              localStorage.setItem('SIM_LOCATION', '🏠 ផ្ទះ (Home)');
+                            }}
+                            className={`text-[9px] font-sans font-bold px-2 py-0.5 rounded border transition flex items-center gap-0.5 cursor-pointer focus:outline-none ${
+                              simLocation.includes('ផ្ទះ') || simLocation.includes('Home')
+                                ? 'bg-orange-100 border-orange-355 text-orange-900 font-extrabold'
+                                : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            🏠 ផ្ទះ (Home)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSimLocation('🏫 សាលារៀន (School)');
+                              localStorage.setItem('SIM_LOCATION', '🏫 សាលារៀន (School)');
+                            }}
+                            className={`text-[9px] font-sans font-bold px-2 py-0.5 rounded border transition flex items-center gap-0.5 cursor-pointer focus:outline-none ${
+                              simLocation.includes('សាលារៀន') || simLocation.includes('School')
+                                ? 'bg-orange-100 border-orange-355 text-orange-900 font-extrabold'
+                                : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            🏫 សាលារៀន (School)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (navigator.geolocation) {
+                                setSimLocation('🛰️ កំពុងស្វែងរក GPS...');
+                                navigator.geolocation.getCurrentPosition(
+                                  (pos) => {
+                                    const loc = `📍 GPS (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`;
+                                    setSimLocation(loc);
+                                    localStorage.setItem('SIM_LOCATION', loc);
+                                  },
+                                  () => {
+                                    setSimLocation('📍 ភ្នំពេញ (Phnom Penh)');
+                                    localStorage.setItem('SIM_LOCATION', '📍 ភ្នំពេញ (Phnom Penh)');
+                                  }
+                                );
+                              } else {
+                                setSimLocation('📍 ភ្នំពេញ (Phnom Penh)');
+                                localStorage.setItem('SIM_LOCATION', '📍 ភ្នំពេញ (Phnom Penh)');
+                              }
+                            }}
+                            className={`text-[9px] font-sans font-bold px-2 py-0.5 rounded border transition flex items-center gap-0.5 cursor-pointer focus:outline-none ${
+                              simLocation.includes('GPS')
+                                ? 'bg-emerald-105 border-emerald-300 text-emerald-850 font-extrabold'
+                                : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            🛰️ Auto GPS
+                          </button>
+                        </div>
                       </div>
 
                       {/* Counter Current & Max */}
@@ -1335,8 +1395,68 @@ export default function App() {
                                     className="font-semibold text-stone-850 bg-transparent hover:bg-orange-50/50 focus:bg-white border border-transparent hover:border-dashed hover:border-orange-350 focus:border-orange-500 rounded px-1.5 py-0.5 w-full outline-none transition-all block text-[10px]"
                                     placeholder="បញ្ចូលទីតាំង..."
                                   />
+                                  {/* Quick Select Places */}
+                                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSimLocation('🏠 ផ្ទះ (Home)');
+                                        localStorage.setItem('SIM_LOCATION', '🏠 ផ្ទះ (Home)');
+                                      }}
+                                      className={`text-[8px] font-sans font-bold px-1.5 py-0.5 rounded border transition flex items-center gap-0.5 cursor-pointer focus:outline-none ${
+                                        simLocation.includes('ផ្ទះ') || simLocation.includes('Home')
+                                          ? 'bg-orange-100 border-orange-300 text-orange-850 shadow-2xs font-extrabold'
+                                          : 'bg-stone-50 border-stone-200 text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+                                      }`}
+                                    >
+                                      🏠 ផ្ទះ
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSimLocation('🏫 សាលារៀន (School)');
+                                        localStorage.setItem('SIM_LOCATION', '🏫 សាលារៀន (School)');
+                                      }}
+                                      className={`text-[8px] font-sans font-bold px-1.5 py-0.5 rounded border transition flex items-center gap-0.5 cursor-pointer focus:outline-none ${
+                                        simLocation.includes('សាលារៀន') || simLocation.includes('School')
+                                          ? 'bg-orange-100 border-orange-300 text-orange-850 shadow-2xs font-extrabold'
+                                          : 'bg-stone-50 border-stone-200 text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+                                      }`}
+                                    >
+                                      🏫 សាលារៀន
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (navigator.geolocation) {
+                                          setSimLocation('🛰️ កំពុងស្វែងរក GPS...');
+                                          navigator.geolocation.getCurrentPosition(
+                                            (pos) => {
+                                              const loc = `📍 GPS (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`;
+                                              setSimLocation(loc);
+                                              localStorage.setItem('SIM_LOCATION', loc);
+                                            },
+                                            () => {
+                                              setSimLocation('📍 ភ្នំពេញ (Phnom Penh)');
+                                              localStorage.setItem('SIM_LOCATION', '📍 ភ្នំពេញ (Phnom Penh)');
+                                            }
+                                          );
+                                        } else {
+                                          setSimLocation('📍 ភ្នំពេញ (Phnom Penh)');
+                                          localStorage.setItem('SIM_LOCATION', '📍 ភ្នំពេញ (Phnom Penh)');
+                                        }
+                                      }}
+                                      className={`text-[8px] font-sans font-bold px-1.5 py-0.5 rounded border transition flex items-center gap-0.5 cursor-pointer focus:outline-none ${
+                                        simLocation.includes('GPS')
+                                          ? 'bg-emerald-100 border-emerald-300 text-emerald-850 shadow-2xs'
+                                          : 'bg-stone-50 border-stone-200 text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+                                      }`}
+                                    >
+                                      🛰️ Auto GPS
+                                    </button>
+                                  </div>
                                 </div>
-                                <span className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/location:opacity-100 transition text-[7.5px] text-[#ea580c] font-sans font-bold bg-orange-50 px-1 py-0.2 rounded border border-orange-200 pointer-events-none select-none z-10">
+                                <span className="absolute right-0 top-3 -translate-y-1/2 opacity-0 group-hover/location:opacity-100 transition text-[7.5px] text-[#ea580c] font-sans font-bold bg-orange-50 px-1 py-0.2 rounded border border-orange-200 pointer-events-none select-none z-10">
                                   កែប្រែ
                                 </span>
                               </div>
@@ -2709,7 +2829,7 @@ export default function App() {
                     />
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-1.5 glass-effect">
                     <label className="text-xs font-sans font-bold text-stone-700">ទីតាំង (Location)</label>
                     <input
                       type="text"
@@ -2720,6 +2840,66 @@ export default function App() {
                       }}
                       className="w-full px-4 py-2 border border-stone-200 bg-white rounded-xl text-xs font-sans text-stone-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
                     />
+                    {/* Preset buttons */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimLocation('🏠 ផ្ទះ (Home)');
+                          localStorage.setItem('SIM_LOCATION', '🏠 ផ្ទះ (Home)');
+                        }}
+                        className={`text-[9px] font-sans font-bold px-2 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer focus:outline-none ${
+                          simLocation.includes('ផ្ទះ') || simLocation.includes('Home')
+                            ? 'bg-orange-100 border-orange-300 text-orange-900 font-extrabold'
+                            : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                        }`}
+                      >
+                        🏠 ផ្ទះ (Home)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimLocation('🏫 សាលារៀន (School)');
+                          localStorage.setItem('SIM_LOCATION', '🏫 សាលារៀន (School)');
+                        }}
+                        className={`text-[9px] font-sans font-bold px-2 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer focus:outline-none ${
+                          simLocation.includes('សាលារៀន') || simLocation.includes('School')
+                            ? 'bg-orange-100 border-orange-300 text-orange-900 font-extrabold'
+                            : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                        }`}
+                      >
+                        🏫 សាលារៀន (School)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator.geolocation) {
+                            setSimLocation('🛰️ កំពុងស្វែងរក GPS...');
+                            navigator.geolocation.getCurrentPosition(
+                              (pos) => {
+                                const loc = `📍 GPS (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`;
+                                setSimLocation(loc);
+                                localStorage.setItem('SIM_LOCATION', loc);
+                              },
+                              () => {
+                                setSimLocation('📍 ភ្នំពេញ (Phnom Penh)');
+                                localStorage.setItem('SIM_LOCATION', '📍 ភ្នំពេញ (Phnom Penh)');
+                              }
+                            );
+                          } else {
+                            setSimLocation('📍 ភ្នំពេញ (Phnom Penh)');
+                            localStorage.setItem('SIM_LOCATION', '📍 ភ្នំពេញ (Phnom Penh)');
+                          }
+                        }}
+                        className={`text-[9px] font-sans font-bold px-2 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer focus:outline-none ${
+                          simLocation.includes('GPS')
+                            ? 'bg-emerald-100 border-emerald-300 text-emerald-850 font-extrabold'
+                            : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                        }`}
+                      >
+                        🛰️ Auto GPS
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-1.5 col-span-1 md:col-span-2 bg-[#f4f2ee]/40 p-3 rounded-xl border border-stone-200/65">
