@@ -280,6 +280,7 @@ export default function App() {
   const [supabaseCount, setSupabaseCount] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
+  const [copiedVercelEnv, setCopiedVercelEnv] = useState(false);
 
   // Mobile Simulator Customizable States
   const [simCourseTitle, setSimCourseTitle] = useState(() => {
@@ -563,18 +564,26 @@ export default function App() {
   const handleFetchAllFromSupabase = async () => {
     setIsFetchingSupabase(true);
     setSupabaseStatus('loading');
-    setSupabaseMessage('កំពុងទាញយកទិន្នន័យទាំងអស់ពី Supabase ( bypass លក្ខខណ្ឌ ១០០០ ជួរ)...');
-    setSupabaseCount(null);
+    setSupabaseMessage('កំពុងទាញយកទិន្នន័យពី Supabase ( bypass លក្ខខណ្ឌ ១០០០ ជួរ)...');
+    setSupabaseCount(0);
 
     try {
-      const { data, error } = await supabaseFetchAllRows<any>('teachers', 'no');
+      const { data, error } = await supabaseFetchAllRows<any>(
+        'teachers', 
+        'no',
+        1000,
+        (currentCount) => {
+          setSupabaseCount(currentCount);
+          setSupabaseMessage(`កំពុងទាញយកទិន្នន័យពី Supabase... ទាញយកបានចំនួន ${currentCount} ជួរ ( bypass ដែនកំណត់ ១០០០ ជួរ)`);
+        }
+      );
       if (error) {
         setSupabaseStatus('error');
         setSupabaseMessage(`បរាជ័យក្នុងការទាញយកទិន្នន័យ៖ ${error.message}`);
       } else {
         setSupabaseStatus('success');
         setSupabaseCount(data.length);
-        setSupabaseMessage(`ទាញយកបានជោគជ័យ! សរុបចំនួន៖ ${data.length} ជួរ។ ដំណើរការដោយគ្មានបញ្ហាដែនកំណត់ ១០០០ ជួរបរិមាណឡើយ។`);
+        setSupabaseMessage(`ទាញយកបានជោគជ័យសរុប៖ ${data.length} ជួរ! ប្រព័ន្ធបានរំលងដែនកំណត់ ១០០០ ជួររបស់ Supabase គម្រោង Free ដោយជោគជ័យ។`);
         
         // If data is returned, we can optionally populate our local school status list for the demo!
         if (data && data.length > 0) {
@@ -3324,10 +3333,24 @@ export default function App() {
 
                   <div className="flex flex-col gap-3 font-sans text-xs">
                     <div className="flex flex-col gap-1">
-                      <label className="font-bold text-stone-700 flex items-center gap-1">
-                        <span>SUPABASE_URL</span>
-                        <span className="text-[9.5px] font-normal text-stone-400 font-mono">(VITE_SUPABASE_URL)</span>
-                      </label>
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-stone-700 flex items-center gap-1">
+                          <span>SUPABASE_URL</span>
+                          <span className="text-[9.5px] font-normal text-stone-400 font-mono">(VITE_SUPABASE_URL)</span>
+                        </label>
+                        {supabaseUrlInput && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(supabaseUrlInput);
+                              alert('បានចម្លង URL');
+                            }}
+                            className="text-[8px] font-sans text-indigo-650 hover:underline hover:text-indigo-800"
+                          >
+                            📋 ចម្លង URL
+                          </button>
+                        )}
+                      </div>
                       <input 
                         type="url" 
                         value={supabaseUrlInput}
@@ -3338,10 +3361,24 @@ export default function App() {
                     </div>
 
                     <div className="flex flex-col gap-1">
-                      <label className="font-bold text-stone-700 flex items-center gap-1">
-                        <span>SUPABASE_ANON_KEY</span>
-                        <span className="text-[9.5px] font-normal text-stone-400 font-mono">(VITE_SUPABASE_ANON_KEY)</span>
-                      </label>
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-stone-700 flex items-center gap-1">
+                          <span>SUPABASE_ANON_KEY</span>
+                          <span className="text-[9.5px] font-normal text-stone-400 font-mono">(VITE_SUPABASE_ANON_KEY)</span>
+                        </label>
+                        {supabaseKeyInput && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(supabaseKeyInput);
+                              alert('បានចម្លង Key');
+                            }}
+                            className="text-[8px] font-sans text-indigo-650 hover:underline hover:text-indigo-800"
+                          >
+                            📋 ចម្លង Key
+                          </button>
+                        )}
+                      </div>
                       <textarea
                         rows={3}
                         value={supabaseKeyInput}
@@ -3352,7 +3389,36 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2.5 mt-2">
+                  {/* Vercel multi-copy widget helper */}
+                  <div className="mt-1 bg-stone-50 border border-stone-200/80 rounded-xl p-3 flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-sans font-bold text-stone-500 uppercase tracking-wide flex items-center gap-1">
+                        <span>📋 អថេរសម្រាប់ Vercel (.env)</span>
+                        <span className="animate-pulse w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                      </span>
+                      <button
+                        onClick={() => {
+                          const text = `VITE_SUPABASE_URL=${supabaseUrlInput || 'https://your-project.supabase.co'}\nVITE_SUPABASE_ANON_KEY=${supabaseKeyInput || 'your-anon-public-key'}`;
+                          navigator.clipboard.writeText(text);
+                          setCopiedVercelEnv(true);
+                          setTimeout(() => setCopiedVercelEnv(false), 2000);
+                        }}
+                        className={`text-[9.5px] font-sans font-extrabold px-2 py-0.5 rounded border transition-all cursor-pointer focus:outline-none ${
+                          copiedVercelEnv 
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold' 
+                            : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700'
+                        }`}
+                      >
+                        {copiedVercelEnv ? "✓ បានចម្លងជោគជ័យ!" : "⚡ ចម្លងទំរង់អថេរ Vercel"}
+                      </button>
+                    </div>
+                    <pre className="font-mono text-[9.5px] bg-stone-900 text-stone-300 p-2.5 rounded-lg overflow-x-auto whitespace-pre select-all leading-normal">
+{`VITE_SUPABASE_URL=${supabaseUrlInput || 'https://your-project.supabase.co'}
+VITE_SUPABASE_ANON_KEY=${supabaseKeyInput ? (supabaseKeyInput.substring(0, 25) + '...') : 'your_anon_key_here'}`}
+                    </pre>
+                  </div>
+
+                  <div className="flex gap-2.5 mt-1">
                     <button
                       onClick={() => handleSaveAndTestSupabase(supabaseUrlInput, supabaseKeyInput)}
                       className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow"

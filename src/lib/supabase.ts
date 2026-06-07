@@ -42,7 +42,8 @@ export function getSupabaseClient() {
 export async function supabaseFetchAllRows<T>(
   tableName: string, 
   customOrderColumn: string = 'id',
-  batchSize: number = 1000
+  batchSize: number = 1000,
+  onProgress?: (fetchedCount: number) => void
 ): Promise<{ data: T[]; error: any }> {
   const client = getSupabaseClient();
   if (!client) {
@@ -59,7 +60,7 @@ export async function supabaseFetchAllRows<T>(
     while (!completed && safetyLoopCounter < 50) { // Limit to 50,000 rows maximum for safety
       safetyLoopCounter++;
       
-      const { data, error, status } = await client
+      const { data, error } = await client
         .from(tableName)
         .select('*')
         .range(from, to)
@@ -71,6 +72,10 @@ export async function supabaseFetchAllRows<T>(
 
       if (data && data.length > 0) {
         allRows = [...allRows, ...(data as T[])];
+        
+        if (onProgress) {
+          onProgress(allRows.length);
+        }
         
         // If we fetched fewer rows than the index batch limit, we reached the end of the collection
         if (data.length < batchSize) {
