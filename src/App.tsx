@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -67,6 +67,15 @@ import {
   testSupabaseConnection,
   syncTeachersToSupabase
 } from './lib/supabase';
+import {
+  initAuth as initGoogleAuth,
+  googleSignIn,
+  getAccessToken as getGoogleAccessToken,
+  logoutGoogle,
+  listSpreadsheets,
+  createTeacherSpreadsheet,
+  writeTeachersToSheet
+} from './lib/googleSheets';
 
 // Simple initial mock dataset to provide beautiful immediate demo content
 const INITIAL_TEACHERS: TeacherRecord[] = [
@@ -246,7 +255,7 @@ const DEFAULT_CONFIG: DocumentConfig = {
 export default function App() {
   const [teachers, setTeachers] = useState<TeacherRecord[]>(INITIAL_TEACHERS);
   const [config, setConfig] = useState<DocumentConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'config' | 'preview' | 'supabase'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'config' | 'preview' | 'supabase' | 'google-sheets'>('dashboard');
   const [activeShift, setActiveShift] = useState<'AM' | 'PM'>('AM'); // ព្រឹក=AM, រសៀល=PM
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('t-2'); // Selected teacher simulated account
   const [preferredSignatureMethod, setPreferredSignatureMethod] = useState<'draw' | 'camera' | 'upload'>('draw');
@@ -281,6 +290,165 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
   const [copiedVercelEnv, setCopiedVercelEnv] = useState(false);
+
+  // Google Sheets state variables
+  const [googleUser, setGoogleUser] = useState<any | null>(null);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
+  const [googleSheetsList, setGoogleSheetsList] = useState<{ id: string; name: string }[]>([]);
+  const [googleSheetsStatus, setGoogleSheetsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [googleSheetsMessage, setGoogleSheetsMessage] = useState('');
+  const [selectedSheetId, setSelectedSheetId] = useState(() => {
+    return localStorage.getItem('GS_SELECTED_SHEET_ID') || '';
+  });
+  const [autoSaveToGoogle, setAutoSaveToGoogle] = useState(() => {
+    return localStorage.getItem('GS_AUTO_SAVE') === 'true';
+  });
+
+  // Google Sheets Auth Init & Token Persistence
+  useEffect(() => {
+    // Check if token exists in session storage first
+    getGoogleAccessToken().then(async (tok) => {
+      if (tok) {
+        setGoogleAccessToken(tok);
+        // Load listings dynamically
+        try {
+          const files = await listSpreadsheets(tok);
+          setGoogleSheetsList(files);
+        } catch (e) {
+          console.warn('Silent load list fields error:', e);
+        }
+      }
+    });
+
+    const unsubscribe = initGoogleAuth(async (user, tok) => {
+      setGoogleUser(user);
+      setGoogleAccessToken(tok);
+      setGoogleSheetsStatus('success');
+      try {
+        const files = await listSpreadsheets(tok);
+        setGoogleSheetsList(files);
+      } catch (err: any) {
+        setGoogleSheetsStatus('error');
+        setGoogleSheetsMessage('បរាជ័យក្នុងការទាញយកបញ្ជីឯកសារ៖ ' + err.message);
+      }
+    }, () => {
+      setGoogleUser(null);
+      setGoogleAccessToken(null);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Google Sheets Auto-Save Effect
+  useEffect(() => {
+    if (!autoSaveToGoogle || !selectedSheetId || !googleAccessToken) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setIsSyncingGoogle(true);
+        await writeTeachersToSheet(googleAccessToken, selectedSheetId, teachers);
+        console.log('Auto-saved state to Google Sheets.');
+      } catch (err: any) {
+        console.error('Google Sheets Auto-save failed:', err);
+      } finally {
+        setIsSyncingGoogle(false);
+      }
+    }, 2500); // Debounce to allow user to edit descriptions/signatures without slamming Google APIs
+
+    return () => clearTimeout(timeoutId);
+  }, [teachers, autoSaveToGoogle, selectedSheetId, googleAccessToken]);
+
+  // Google Sign-In Action Coordinator
+  const handleGoogleSignIn = async () => {
+    try {
+      setGoogleSheetsStatus('loading');
+      setGoogleSheetsMessage('កំពុងភ្ជាប់ទៅកាន់ Google Cloud Auth...');
+      const response = await googleSignIn();
+      if (response) {
+        setGoogleUser(response.user);
+        setGoogleAccessToken(response.accessToken);
+        setGoogleSheetsStatus('success');
+        setGoogleSheetsMessage('បានភ្ជាប់ជាមួយគណនី Google ជោគជ័យ!');
+        
+        // Load sheets
+        const files = await listSpreadsheets(response.accessToken);
+        setGoogleSheetsList(files);
+      }
+    } catch (err: any) {
+      setGoogleSheetsStatus('error');
+      setGoogleSheetsMessage('តភ្ជាប់បរាជ័យ៖ ' + err.message);
+    }
+  };
+
+  // Google Logout Action Coordinate
+  const handleGoogleLogout = async () => {
+    const confirmLogout = window.confirm('តើអ្នកពិតជាចង់ចាកចេញពីគណនី Google មែនទេ?');
+    if (!confirmLogout) return;
+    try {
+      await logoutGoogle();
+      setGoogleUser(null);
+      setGoogleAccessToken(null);
+      setGoogleSheetsList([]);
+      setGoogleSheetsStatus('idle');
+      setGoogleSheetsMessage('បានចាកចេញពីគណនី Google រួចរាល់។');
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  // Manual Spreadsheet trigger Sync
+  const handleManualGoogleSync = async () => {
+    if (!googleAccessToken) {
+      alert('សូមចូលគណនី Google ជាមុនសិន!');
+      return;
+    }
+    if (!selectedSheetId) {
+      alert('សូមជ្រើសរើស ឬបង្កើត Google Sheet ជាមុនសិន!');
+      return;
+    }
+
+    try {
+      setIsSyncingGoogle(true);
+      setGoogleSheetsStatus('loading');
+      setGoogleSheetsMessage('កំពុងបង្ហោះទិន្នន័យគ្រូទាំងអស់ទៅកាន់ Google Sheet...');
+      await writeTeachersToSheet(googleAccessToken, selectedSheetId, teachers);
+      setGoogleSheetsStatus('success');
+      setGoogleSheetsMessage('បានធ្វើសមកាលកម្មទិន្នន័យជោគជ័យ ទៅកាន់ Google Sheet!');
+    } catch (err: any) {
+      setGoogleSheetsStatus('error');
+      setGoogleSheetsMessage('ការធ្វើសមកាលកម្មបរាជ័យ៖ ' + err.message);
+    } finally {
+      setIsSyncingGoogle(false);
+    }
+  };
+
+  // Create brand new Spreadsheet
+  const handleCreateNewGoogleSheet = async (customTitle: string) => {
+    if (!googleAccessToken) {
+      alert('សូមចូលគណនី Google ជាមុនសិន!');
+      return;
+    }
+    try {
+      setGoogleSheetsStatus('loading');
+      setGoogleSheetsMessage('កំពុងបង្កើតតារាងវត្តមានថ្មីនៅលើ Google Drive...');
+      const titleName = customTitle.trim() || `បញ្ជីវត្តមានគ្រូប្រចាំថ្ងៃ - ${config.schoolName || 'សាលារៀន'}`;
+      const newSheetId = await createTeacherSpreadsheet(googleAccessToken, titleName);
+      
+      setSelectedSheetId(newSheetId);
+      localStorage.setItem('GS_SELECTED_SHEET_ID', newSheetId);
+      
+      // Reload lists
+      const files = await listSpreadsheets(googleAccessToken);
+      setGoogleSheetsList(files);
+      
+      setGoogleSheetsStatus('success');
+      setGoogleSheetsMessage(`បានបង្កើតតារាងថ្មីស្ដង់ដារ "${titleName}" ជោគជ័យ!`);
+    } catch (err: any) {
+      setGoogleSheetsStatus('error');
+      setGoogleSheetsMessage('បរាជ័យក្នុងការបង្កើតតារាង៖ ' + err.message);
+    }
+  };
 
   // Mobile Simulator Customizable States
   const [simCourseTitle, setSimCourseTitle] = useState(() => {
@@ -774,6 +942,14 @@ export default function App() {
               >
                 <Database className="w-4.5 h-4.5 text-emerald-400" />
                 <span>⚡ ស្ពានភ្ជាប់ Supabase (Vercel)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('google-sheets')}
+                className={`flex items-center gap-2 font-sans font-medium text-xs px-4 py-2 rounded-lg transition shrink-0 ${activeTab === 'google-sheets' ? 'bg-emerald-600 text-white font-semibold shadow ring-1 ring-emerald-500' : 'text-emerald-400 font-semibold bg-emerald-950/20 hover:bg-emerald-900/30 hover:text-white cursor-pointer'}`}
+              >
+                <FileSpreadsheet className="w-4.5 h-4.5 text-emerald-300" />
+                <span>🟢 ស្ពានភ្ជាប់ Google Sheets (Autosave)</span>
               </button>
             </div>
           </div>
@@ -3646,6 +3822,342 @@ ON CONFLICT (id) DO NOTHING;`}
                     </pre>
                   </div>
                 </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'google-sheets' && (
+          <div className="bg-emerald-50/20 border border-emerald-200/50 rounded-3xl p-6 flex flex-col gap-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-emerald-100 pb-5">
+              <div>
+                <h2 className="font-moul text-stone-850 text-base flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  ស្ពានភ្ជាប់សមកាលកម្ម Google Sheets & Google Drive Cloud
+                </h2>
+                <p className="font-sans text-xs text-stone-500 mt-1">
+                  រក្សាទុកប្រវត្តិនៃតារាងវត្តមានគ្រូដោយស្វ័យប្រវត្តិ ឬដោយដៃទៅកាន់ Google Sheets របស់អ្នក។
+                </p>
+              </div>
+              <div className="flex items-center gap-2 bg-emerald-50/80 px-3.5 py-1.5 rounded-xl border border-emerald-150">
+                <span className={`w-2 h-2 rounded-full ${googleAccessToken ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'}`}></span>
+                <span className="text-[10px] font-sans font-bold text-emerald-850">
+                  ស្ថានភាព៖ {googleAccessToken ? 'បានភ្ជាប់គណនី' : 'មិនទាន់ភ្ជាប់'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Connection and Sync state */}
+              <div className="lg:col-span-12 xl:col-span-5 flex flex-col gap-6">
+                
+                {/* 1. Auth Status Block */}
+                <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-4">
+                  <h3 className="font-moul text-stone-850 text-[10px] border-b pb-2 mb-1 flex items-center justify-between">
+                    <span>🔑 គណនី Google (Google Account)</span>
+                    {googleUser && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-sans font-bold">
+                        Connected
+                      </span>
+                    )}
+                  </h3>
+
+                  {!googleAccessToken ? (
+                    <div className="flex flex-col gap-3">
+                      <p className="font-sans text-xs text-stone-500 leading-relaxed">
+                        សូមចូលគណនី Google របស់អ្នកដើម្បីដំណើរការស្វ័យប្រវត្តិកំណត់វត្តមាន នឹងបង្កើតតារាង Spreadsheet ថ្មីៗដោយផ្ទាល់។
+                      </p>
+                      <button
+                        onClick={handleGoogleSignIn}
+                        className="gsi-material-button w-full flex items-center justify-center cursor-pointer shadow-sm hover:shadow"
+                      >
+                        <div className="gsi-material-button-state"></div>
+                        <div className="gsi-material-button-content-wrapper">
+                          <div className="gsi-material-button-icon">
+                            <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
+                              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                              <path fill="none" d="M0 0h48v48H0z"></path>
+                            </svg>
+                          </div>
+                          <span className="gsi-material-button-contents font-sans font-bold text-xs text-stone-700">អនុញ្ញាតភ្ជាប់គណនី Google</span>
+                        </div>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-3 bg-stone-50 p-3 rounded-xl border">
+                        {googleUser?.photoURL ? (
+                          <img 
+                            src={googleUser.photoURL} 
+                            alt={googleUser.displayName || 'Google User'} 
+                            className="w-10 h-10 rounded-full border border-stone-200"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
+                            {(googleUser?.displayName || 'G')[0]}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-sans font-bold text-xs text-stone-800 truncate">
+                            {googleUser?.displayName}
+                          </h4>
+                          <p className="font-sans text-[10px] text-stone-400 truncate">
+                            {googleUser?.email}
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleGoogleLogout}
+                          className="px-2.5 py-1.5 text-[10px] font-sans font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition"
+                        >
+                          ចាកចេញ
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Target Spreadsheet settings */}
+                {googleAccessToken && (
+                  <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-4 animate-fade-in">
+                    <h3 className="font-moul text-stone-850 text-[10px] border-b pb-2 mb-1">
+                      📂 កំណត់តារាងគោលដៅ (Target Spreadsheet)
+                    </h3>
+                    
+                    {/* Create New Sheet option */}
+                    <div className="bg-emerald-50/35 border border-emerald-100 p-3.5 rounded-xl flex flex-col gap-2.5">
+                      <span className="text-[10px] font-sans font-bold text-emerald-800 uppercase tracking-wider block">
+                        ➕ បង្កើតគម្រោងថ្មី (Create New Sheet)
+                      </span>
+                      <div className="flex gap-2">
+                        <input
+                          id="new-sheet-title-input"
+                          type="text"
+                          placeholder="ឈ្មោះតារាងថ្មី (ឧ. វត្តមានគ្រូខែមិថុនា)"
+                          defaultValue={`បញ្ជីវត្តមានគ្រូប្រចាំថ្ងៃ - ${config.schoolName || 'វិទ្យាល័យ'}`}
+                          className="flex-1 px-3 py-2 bg-white border border-stone-250 rounded-xl font-sans text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => {
+                            const inputEl = document.getElementById('new-sheet-title-input') as HTMLInputElement;
+                            handleCreateNewGoogleSheet(inputEl?.value || '');
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-sans font-bold transition flex items-center justify-center cursor-pointer shadow"
+                        >
+                          បង្កើត
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Choose existing sheet */}
+                    <div className="flex flex-col gap-2 pt-2">
+                      <label className="font-bold text-stone-700 text-xs flex items-center gap-1 font-sans">
+                        <span>🗄️ ជ្រើសរើសពីតារាងដែលមានស្រាប់ (Existing Sheets)</span>
+                      </label>
+                      
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedSheetId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedSheetId(val);
+                            localStorage.setItem('GS_SELECTED_SHEET_ID', val);
+                          }}
+                          className="flex-1 px-3 py-2.5 bg-white border border-stone-250 rounded-xl font-sans text-xs focus:ring-1 focus:ring-emerald-500 font-bold text-stone-800"
+                        >
+                          <option value="">-- សូមជ្រើសរើស Spreadsheet --</option>
+                          {googleSheetsList.map(sheet => (
+                            <option key={sheet.id} value={sheet.id}>
+                              📊 {sheet.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={async () => {
+                            try {
+                              setGoogleSheetsStatus('loading');
+                              setGoogleSheetsMessage('កំពុងផ្ទុកបញ្ជីឯកសារថ្មីៗពី Google Drive...');
+                              const files = await listSpreadsheets(googleAccessToken);
+                              setGoogleSheetsList(files);
+                              setGoogleSheetsStatus('success');
+                              setGoogleSheetsMessage('បានធ្វើបច្ចុប្បន្នភាពឯកសារពី Google Drive រួចរាល់!');
+                            } catch (e: any) {
+                              setGoogleSheetsStatus('error');
+                              setGoogleSheetsMessage('បរាជ័យក្នុងការផ្ទុកឯកសារ៖ ' + e.message);
+                            }
+                          }}
+                          title="ផ្ទុកបញ្ជីឡើងវិញ"
+                          className="p-2.5 bg-stone-100 hover:bg-stone-150 border rounded-xl text-stone-600"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {selectedSheetId && (
+                        <div className="mt-2 text-[10px] text-indigo-750 font-mono bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100 select-all overflow-x-auto whitespace-pre">
+                          Spreadsheet ID: {selectedSheetId}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Active Sync & Autosave Toggles */}
+              <div className="lg:col-span-12 xl:col-span-7 flex flex-col gap-6">
+                
+                {/* Autosave and Manual sync Action Panel */}
+                {googleAccessToken && selectedSheetId ? (
+                  <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-5 animate-fade-in font-sans">
+                    <h3 className="font-moul text-emerald-850 text-[10px] border-b pb-2">
+                      ⚡ ជម្រើសការធ្វើសមកាលកម្មទិន្នន័យ (Sync Options)
+                    </h3>
+
+                    {/* Autosave Toggle Switch */}
+                    <div className="flex items-start justify-between p-4 rounded-xl border border-emerald-100 bg-emerald-50/10 gap-4">
+                      <div className="flex flex-col gap-1 flex-1">
+                        <span className="font-sans font-extrabold text-stone-850 text-xs flex items-center gap-1.5">
+                          <span>🔄 បើកមុខងារ Autosave (Auto-Save to Sheets)</span>
+                          <span className="relative flex h-2 w-2">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${autoSaveToGoogle ? 'bg-emerald-400' : 'bg-stone-300'}`}></span>
+                            <span className={`relative inline-flex rounded-full h-2 w-2 ${autoSaveToGoogle ? 'bg-emerald-500' : 'bg-stone-400'}`}></span>
+                          </span>
+                        </span>
+                        <p className="font-sans text-[11px] text-stone-500 leading-relaxed">
+                          នៅពេលបើកដំណើរការ រាល់ពេលអ្នកការកែប្រែស្ថានភាពគ្រូ (វត្តមាន ហត្ថលេខា ឬការមតិផ្សេងៗ) វានឹងធ្វើសមកាលកម្មស្វ័យប្រវត្តិទៅកាន់ Google Sheet ចំពេល ២,៥វិនាទី ដេបោន (Debounce) ដើម្បីសុវត្ថិភាព។
+                        </p>
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          const nextVal = !autoSaveToGoogle;
+                          setAutoSaveToGoogle(nextVal);
+                          localStorage.setItem('GS_AUTO_SAVE', String(nextVal));
+                        }}
+                        className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${autoSaveToGoogle ? 'bg-emerald-600 justify-end' : 'bg-stone-200 justify-start'}`}
+                      >
+                        <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300"></div>
+                      </button>
+                    </div>
+
+                    {/* Manual Sync Trigger */}
+                    <div className="flex flex-col gap-2 pt-1 border-t space-y-1">
+                      <p className="text-[11px] font-sans text-stone-500 leading-relaxed">
+                        អ្នកក៏អាចបញ្ជូនបច្ចុប្បន្នភាពគ្រូទាំងឡាយ ({teachers.length} នាក់) ទៅកាន់សន្លឹកកិច្ចការ Google Sheets ដោយដៃផ្ទាល់នៅកន្លែងនេះ៖
+                      </p>
+                      <button
+                        onClick={handleManualGoogleSync}
+                        disabled={isSyncingGoogle}
+                        className={`w-full py-3.5 rounded-xl font-sans font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 border border-emerald-600/40 shadow ${
+                          isSyncingGoogle 
+                            ? 'bg-stone-150 text-stone-400 border-none animate-pulse' 
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        }`}
+                      >
+                        {isSyncingGoogle ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-stone-400" />
+                            <span>កំពុងរក្សាទុកទៅ Google Sheet...</span>
+                          </>
+                        ) : (
+                          <>
+                            <FileSpreadsheet className="w-4 h-4 text-white" />
+                            <span>💾 ធ្វើសមកាលកម្មដោយដៃឥឡូវនេះ (Sync to Sheet Now)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Notification Messages */}
+                    {googleSheetsMessage && (
+                      <div className={`p-4 rounded-xl border text-[11px] font-sans leading-relaxed animate-fade-in ${
+                        googleSheetsStatus === 'success' ? 'bg-emerald-50 border-emerald-150 text-emerald-800' :
+                        googleSheetsStatus === 'error' ? 'bg-rose-50 border-rose-150 text-rose-850' :
+                        'bg-blue-50 border-blue-150 text-blue-850'
+                      }`}>
+                        <div className="font-bold flex items-center gap-1.5 mb-1.5">
+                          {googleSheetsStatus === 'success' ? '✅ បច្ចុប្បន្នភាពជោគជ័យ៖' : googleSheetsStatus === 'error' ? '❌ បញ្ហាតភ្ជាប់៖' : 'ℹ️ ព័ត៌មានបន្ថែម៖'}
+                        </div>
+                        {googleSheetsMessage}
+                        {googleSheetsStatus === 'success' && selectedSheetId && (
+                          <div className="mt-2 flex items-center gap-1">
+                            <a
+                              href={`https://docs.google.com/spreadsheets/d/${selectedSheetId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[10.5px] text-emerald-700 font-extrabold hover:underline"
+                            >
+                              🔗 បើកមើលតារាងវត្តមានលើ Google Sheets ផ្ទាល់ <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : googleAccessToken ? (
+                  <div className="bg-white p-6 rounded-2xl border border-stone-150 text-center flex flex-col items-center justify-center py-10 gap-3">
+                    <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 text-xl font-bold font-sans">
+                      📂
+                    </div>
+                    <div>
+                      <h4 className="font-moul text-stone-850 text-xs">មិនទាន់មានការជ្រើសរើសគម្រោងតារាង</h4>
+                      <p className="font-sans text-xs text-stone-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                        សូមជ្រើសរើសតារាង Spreadsheet ពីបញ្ជីខាងឆ្វេង ឬបង្កើតតារាង Spreadsheet ថ្មីដើម្បីចាប់ផ្តើមប្រើប្រាស់ការធ្វើសមកាលកម្ម Autosave Google Sheets។
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  // Initial banner explaining capabilities
+                  <div className="bg-white p-5 rounded-2xl border border-stone-150 shadow-sm flex flex-col gap-4">
+                    <h3 className="font-moul text-emerald-850 text-[10px] border-b pb-2 mb-1">
+                      💡 អត្ថប្រយោជន៍ និងរបៀបដំណើរការ Google Sheets Autosave
+                    </h3>
+                    <div className="font-sans text-xs text-stone-600 leading-relaxed flex flex-col gap-3.5">
+                      <p>
+                        ការប្រើប្រាស់គណនី Google Drive និង Google Sheets ផ្ទាល់ខ្លួនរបស់អ្នកនឹងផ្តល់ឱ្យអ្នកនូវការសន្សំសំចៃទំហំផ្ទុក និងសុវត្ថិភាពខ្ពស់បំផុត៖
+                      </p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-3 bg-stone-50 rounded-xl border border-stone-100 flex gap-2">
+                          <span className="text-lg">💰</span>
+                          <div>
+                            <span className="font-bold text-stone-800 text-[11px] block">គម្រោងឥតគិតថ្លៃ ១០០%</span>
+                            <span className="text-[10px] text-stone-500 leading-normal block">គ្មានដែនកំណត់ទិន្នន័យ (No row limits) ដូចគណនី Free Supabase ឡើយ។</span>
+                          </div>
+                        </div>
+                        
+                        <div className="p-3 bg-stone-50 rounded-xl border border-stone-100 flex gap-2">
+                          <span className="text-lg">⚡</span>
+                          <div>
+                            <span className="font-bold text-stone-800 text-[11px] block">Autosave ភ្លាមៗ</span>
+                            <span className="text-[10px] text-stone-500 leading-normal block">រាល់ការកែប្រែស្ថានភាព ម៉ោងចូល ឬហត្ថលេខា នឹងធ្វើការរក្សាទុកស្វ័យប្រវត្តក្នុងតារាង។</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-stone-50 rounded-xl border border-stone-100 flex gap-2">
+                          <span className="text-lg">🎨</span>
+                          <div>
+                            <span className="font-bold text-stone-800 text-[11px] block">រៀបចំទម្រង់ស្អាត (Styler template)</span>
+                            <span className="text-[10px] text-stone-500 leading-normal block">កូដស្ពាននឹងរៀបចំ merge ក្បាលតារាង ដាក់ពណ៌ខៀវខ្ចី និងកំណត់ border ស្អាតស្អំដោយស្វ័យប្រវត្ត។</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-stone-50 rounded-xl border border-stone-100 flex gap-2">
+                          <span className="text-lg">🔒</span>
+                          <div>
+                            <span className="font-bold text-stone-800 text-[11px] block">សុវត្ថិភាពដាច់ខាត</span>
+                            <span className="text-[10px] text-stone-500 leading-normal block">ទិន្នន័យរក្សាទុកលើ Google Drive ផ្ទាល់ខ្លួនរបស់អ្នក ធានាការរក្សាការសម្ងាត់ដ៏ល្អបំផុត។</span>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
 
               </div>
             </div>
